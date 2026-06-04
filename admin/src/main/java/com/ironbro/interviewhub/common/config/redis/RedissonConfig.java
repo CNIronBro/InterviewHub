@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Configuration;
 
 /**
  * Redisson配置类
+ * 配置Redis连接池、超时和重试策略
  */
 @Configuration
 public class RedissonConfig {
@@ -25,6 +26,9 @@ public class RedissonConfig {
     @Value("${spring.data.redis.database:0}")
     private int database;
 
+    /**
+     * 创建 RedissonClient，配置单节点连接池
+     */
     @Bean(destroyMethod = "shutdown")
     public RedissonClient redissonClient() {
         Config config = new Config();
