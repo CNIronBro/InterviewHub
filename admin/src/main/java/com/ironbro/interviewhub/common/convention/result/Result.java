@@ -1,5 +1,6 @@
 package com.ironbro.interviewhub.common.convention.result;
 
+import com.ironbro.interviewhub.common.convention.errorcode.IErrorCode;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
@@ -43,5 +44,25 @@ public class Result<T> implements Serializable {
 
     public boolean isSuccess() {
         return SUCCESS_CODE.equals(code);
+    }
+
+    /**
+     * 通过错误码构建失败响应
+     */
+    public static Result<Void> fail(IErrorCode errorCode) {
+        Result<Void> result = new Result<>();
+        result.setCode(errorCode.code());
+        result.setMessage(errorCode.message());
+        return result;
+    }
+
+    /**
+     * 通过错误码和消息构建失败响应
+     */
+    public static Result<Void> fail(String code, String message) {
+        Result<Void> result = new Result<>();
+        result.setCode(code);
+        result.setMessage(message);
+        return result;
     }
 }
