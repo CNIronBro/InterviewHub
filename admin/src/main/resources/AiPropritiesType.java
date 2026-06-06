@@ -1,0 +1,40 @@
+package com.ironbro.interviewhub.ai.enums;
+
+import lombok.Getter;
+
+/**
+ * AI模型类型枚举
+ */
+@Getter
+public enum AiPropritiesType {
+
+    OPENAI(1, "openai", "OpenAI", "https://api.openai.com/v1"),
+    DOUBAO(2, "doubao", "豆包", "https://ark.cn-beijing.volces.com/api/v3"),
+    SPARK(3, "spark", "讯飞星火", "https://spark-api-open.xf-yun.com/v1"),
+    DEEPSEEK(4, "deepseek", "DeepSeek", "https://api.deepseek.com"),
+    OTHER(99, "other", "其他", "");
+
+    private final Integer code;
+    private final String type;
+    private final String desc;
+    private final String defaultBaseUrl;
+
+    AiPropritiesType(Integer code, String type, String desc, String defaultBaseUrl) {
+        this.code = code;
+        this.type = type;
+        this.desc = desc;
+        this.defaultBaseUrl = defaultBaseUrl;
+    }
+
+    public static AiPropritiesType getByType(String type) {
+        if (type == null) return OTHER;
+        for (AiPropritiesType t : AiPropritiesType.values()) {
+            if (t.getType().equalsIgnoreCase(type)) return t;
+        }
+        return OTHER;
+    }
+
+    public static boolean isSupported(String type) {
+        return getByType(type) != OTHER;
+    }
+}
