@@ -1,4 +1,4 @@
-package com.hewei.hzyjy.xunzhi.common.config.database;
+package com.ironbro.interviewhub.common.config.database;
 
 import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;

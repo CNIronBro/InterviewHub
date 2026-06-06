@@ -9,6 +9,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ironbro.interviewhub.common.convention.exception.ClientException;
+import com.ironbro.interviewhub.common.convention.exception.ServiceException;
 import com.ironbro.interviewhub.common.enums.UserErrorCodeEnum;
 import com.ironbro.interviewhub.user.api.io.req.UserLoginReqDTO;
 import com.ironbro.interviewhub.user.api.io.req.UserRegisterReqDTO;
@@ -48,7 +49,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserDO> implements 
                 .eq(UserDO::getUsername, username);
         UserDO userDO = baseMapper.selectOne(queryWrapper);
         if (userDO == null) {
-            throw new ClientException(UserErrorCodeEnum.USER_NULL);
+            throw new ServiceException(UserErrorCodeEnum.USER_NULL);
         }
         UserRespDTO result = new UserRespDTO();
         BeanUtils.copyProperties(userDO, result);
