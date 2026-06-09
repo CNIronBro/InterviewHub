@@ -44,6 +44,12 @@ public class AiMessage {
     private String reasoningContent;
 
     /**
+     * 消息序号，同一会话内递增
+     */
+    @Indexed
+    private Integer messageSeq;
+
+    /**
      * 父消息ID，用于消息关联
      */
     private Long parentMsgId;

@@ -13,9 +13,14 @@ import java.util.List;
 public interface AiMessageRepository extends MongoRepository<AiMessage, String> {
 
     /**
-     * 根据会话ID查询消息列表
+     * 根据会话ID查询消息列表，按序号升序
      */
-    List<AiMessage> findBySessionIdAndDelFlagOrderByCreateTimeAsc(String sessionId, Integer delFlag);
+    List<AiMessage> findBySessionIdAndDelFlagOrderByMessageSeqAsc(String sessionId, Integer delFlag);
+
+    /**
+     * 获取会话中最大消息序号
+     */
+    AiMessage findTopBySessionIdAndDelFlagOrderByMessageSeqDesc(String sessionId, Integer delFlag);
 
     /**
      * 统计会话消息数量
