@@ -9,6 +9,7 @@ import com.ironbro.interviewhub.ai.dao.entity.AiPropertiesDO;
 import com.ironbro.interviewhub.ai.enums.AiPropritiesType;
 import com.ironbro.interviewhub.common.convention.exception.ClientException;
 import com.ironbro.interviewhub.toolkit.xunfei.AIContentAccumulator;
+import io.micrometer.observation.ObservationRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -16,6 +17,9 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.deepseek.DeepSeekChatModel;
+import org.springframework.ai.deepseek.DeepSeekChatOptions;
+import org.springframework.ai.deepseek.api.DeepSeekApi;
 import org.springframework.ai.model.SimpleApiKey;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.openai.OpenAiChatModel;
@@ -23,6 +27,8 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.retry.support.RetryTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.web.client.DefaultResponseErrorHandler;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.FluxSink;
@@ -34,7 +40,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * 通用 AI 聊天处理器，基于 Spring AI 实现
- * 支持 OpenAI、DeepSeek、Doubao 等兼容 OpenAI 接口的模型
+ * 支持 OpenAI、Doubao、Spark 等兼容 OpenAI 接口的模型
  */
 @Slf4j
 @Component
@@ -75,19 +81,32 @@ public class UniversalAiChatHandler implements AiChatHandler {
                                         sink.next(JSON.toJSONString(resp));
                                         accumulator.appendSimpleContent(content);
                                     }
-                                    // 尝试获取 reasoning_content（DeepSeek 深度思考）
+
+                                    // 先用反射获取 reasoning_content，再 fallback 到 metadata
+                                    String reasoning = null;
                                     try {
-                                        Object reasoningObj = generation.getOutput().getMetadata().get("reasoningContent");
-                                        if (reasoningObj != null) {
-                                            String reasoning = reasoningObj.toString();
-                                            if (StrUtil.isNotEmpty(reasoning)) {
-                                                AiChatStreamRespDTO resp = AiChatStreamRespDTO.builder()
-                                                        .type("reasoning_content").content(reasoning).build();
-                                                sink.next(JSON.toJSONString(resp));
-                                                accumulator.appendReasoningChunk(reasoning.getBytes());
-                                            }
+                                        java.lang.reflect.Method getReasoningContent =
+                                                generation.getOutput().getClass().getMethod("getReasoningContent");
+                                        Object reasoningVal = getReasoningContent.invoke(generation.getOutput());
+                                        if (reasoningVal != null) {
+                                            reasoning = reasoningVal.toString();
                                         }
                                     } catch (Exception ignore) {
+                                    }
+
+                                    if (reasoning == null) {
+                                        Object reasoningObj = generation.getOutput().getMetadata()
+                                                .get("reasoningContent");
+                                        if (reasoningObj != null) {
+                                            reasoning = reasoningObj.toString();
+                                        }
+                                    }
+
+                                    if (StrUtil.isNotEmpty(reasoning)) {
+                                        AiChatStreamRespDTO resp = AiChatStreamRespDTO.builder()
+                                                .type("reasoning_content").content(reasoning).build();
+                                        sink.next(JSON.toJSONString(resp));
+                                        accumulator.appendReasoningChunk(reasoning.getBytes());
                                     }
                                 }
                             } catch (Exception e) {
@@ -125,14 +144,49 @@ public class UniversalAiChatHandler implements AiChatHandler {
             throw new ClientException("AI API Key 未配置");
         }
 
-        RestClient.Builder restClientBuilder = RestClient.builder();
+        RestClient.Builder restClientBuilder = RestClient.builder()
+                .defaultHeaders(headers -> {
+                    if (StrUtil.isNotBlank(aiProperties.getProjectId())) {
+                        headers.add("OpenAI-Project", aiProperties.getProjectId());
+                    }
+                    if (StrUtil.isNotBlank(aiProperties.getOrganizationId())) {
+                        headers.add("OpenAI-Organization", aiProperties.getOrganizationId());
+                    }
+                });
 
+        // DeepSeek 专用路径
+        if (AiPropritiesType.DEEPSEEK.getType().equalsIgnoreCase(aiProperties.getAiType())) {
+            DeepSeekApi deepSeekApi = new DeepSeekApi(
+                    baseUrl, new SimpleApiKey(apiKey),
+                    new LinkedMultiValueMap<>(),
+                    "/chat/completions", "/beta",
+                    restClientBuilder, WebClient.builder(),
+                    new DefaultResponseErrorHandler()
+            );
+
+            DeepSeekChatOptions.Builder optionsBuilder = DeepSeekChatOptions.builder()
+                    .model(aiProperties.getModelName());
+            if (aiProperties.getMaxTokens() != null) {
+                optionsBuilder.maxTokens(aiProperties.getMaxTokens());
+            }
+
+            DeepSeekChatOptions options = optionsBuilder.build();
+            ToolCallingManager toolCallingManager = ToolCallingManager.builder().build();
+
+            DeepSeekChatModel chatModel = new DeepSeekChatModel(
+                    deepSeekApi, options, toolCallingManager,
+                    RetryTemplate.defaultInstance(), ObservationRegistry.NOOP
+            );
+            return ChatClient.builder(chatModel).defaultOptions(options).build();
+        }
+
+        // OpenAI 兼容路径
         OpenAiApi openAiApi = new OpenAiApi(
                 baseUrl, new SimpleApiKey(apiKey),
-                new org.springframework.util.LinkedMultiValueMap<>(),
+                new LinkedMultiValueMap<>(),
                 "/chat/completions", "/embeddings",
                 restClientBuilder, WebClient.builder(),
-                new org.springframework.web.client.DefaultResponseErrorHandler()
+                new DefaultResponseErrorHandler()
         );
 
         OpenAiChatOptions.Builder optionsBuilder = OpenAiChatOptions.builder()
@@ -140,13 +194,13 @@ public class UniversalAiChatHandler implements AiChatHandler {
         if (aiProperties.getMaxTokens() != null) {
             optionsBuilder.maxTokens(aiProperties.getMaxTokens());
         }
+
         OpenAiChatOptions options = optionsBuilder.build();
         ToolCallingManager toolCallingManager = ToolCallingManager.builder().build();
 
         OpenAiChatModel chatModel = new OpenAiChatModel(
                 openAiApi, options, toolCallingManager,
-                RetryTemplate.defaultInstance(),
-                io.micrometer.observation.ObservationRegistry.NOOP
+                RetryTemplate.defaultInstance(), ObservationRegistry.NOOP
         );
 
         return ChatClient.builder(chatModel).defaultOptions(options).build();
