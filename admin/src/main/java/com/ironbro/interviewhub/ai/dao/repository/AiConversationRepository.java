@@ -6,6 +6,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.mongodb.repository.MongoRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -28,4 +29,8 @@ public interface AiConversationRepository extends MongoRepository<AiConversation
      * 根据用户名和AI配置ID分页查询会话列表
      */
     Page<AiConversation> findByUsernameAndAiIdAndDelFlagOrderByCreateTimeDesc(String username, Long aiId, Integer delFlag, Pageable pageable);
+
+    List<AiConversation> findByUsernameAndDelFlagOrderByCreateTimeDesc(String username, Integer delFlag);
+
+    long countByUsernameAndDelFlag(String username, Integer delFlag);
 }

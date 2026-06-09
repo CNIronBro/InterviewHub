@@ -51,6 +51,16 @@ public class AiConversation {
     private Integer status;
 
     /**
+     * 消息总数
+     */
+    private Integer messageCount;
+
+    /**
+     * 最后一条消息时间
+     */
+    private Date lastMessageTime;
+
+    /**
      * 创建时间
      */
     @CreatedDate
