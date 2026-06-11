@@ -1,6 +1,7 @@
 package com.ironbro.interviewhub.agent.dao.entity;
 
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
 import java.util.Date;
@@ -30,6 +31,7 @@ public class AgentPropertiesDO {
     /**
      * 鉴权key
      */
+    @JsonIgnore
     private String apiKey;
 
     /**
