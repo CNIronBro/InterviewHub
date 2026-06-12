@@ -27,6 +27,14 @@ spring:
           min-idle: 0
       timeout: 10000ms
 
+mybatis-plus:
+  mapper-locations: classpath:mapper/*.xml
+  global-config:
+    db-config:
+      logic-delete-field: delFlag
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
 logging:
   file:
     path: ./logs
