@@ -6,6 +6,8 @@ import com.ironbro.interviewhub.agent.api.io.resp.AgentPropertiesRespDTO;
 import com.ironbro.interviewhub.agent.dao.entity.AgentPropertiesDO;
 import com.ironbro.interviewhub.common.convention.result.PageInfo;
 
+import java.util.List;
+
 public interface AgentPropertiesService extends IService<AgentPropertiesDO> {
 
     void create(AgentPropertiesReqDTO requestParam);
@@ -17,4 +19,6 @@ public interface AgentPropertiesService extends IService<AgentPropertiesDO> {
     AgentPropertiesRespDTO getByName(String name);
 
     PageInfo<AgentPropertiesRespDTO> getByPage(AgentPropertiesReqDTO requestParam);
+
+    List<AgentPropertiesDO> listActiveAgents();
 }

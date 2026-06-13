@@ -94,4 +94,12 @@ public class AgentPropertiesServiceImpl extends ServiceImpl<AgentPropertiesMappe
         pageInfo.setSize(agentPropertiesDOPage.getSize());
         return pageInfo;
     }
+
+    @Override
+    public List<AgentPropertiesDO> listActiveAgents() {
+        LambdaQueryWrapper<AgentPropertiesDO> queryWrapper = Wrappers.lambdaQuery(AgentPropertiesDO.class)
+                .eq(AgentPropertiesDO::getDelFlag, 0)
+                .orderByDesc(AgentPropertiesDO::getCreateTime);
+        return baseMapper.selectList(queryWrapper);
+    }
 }
