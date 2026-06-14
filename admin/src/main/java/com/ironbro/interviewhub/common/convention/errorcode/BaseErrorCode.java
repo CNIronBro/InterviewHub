@@ -22,6 +22,9 @@ public enum BaseErrorCode implements IErrorCode {
     IDEMPOTENT_TOKEN_NULL_ERROR("A000200", "幂等Token为空"),
     IDEMPOTENT_TOKEN_DELETE_ERROR("A000201", "幂等Token已被使用或失效"),
 
+    // ========== 二级宏观错误码 系统请求参数错误 ==========
+    PARAM_INVALID("A000001", "参数校验失败"),
+
     // ========== 二级宏观错误码 系统请求操作频繁 ==========
     FLOW_LIMIT_ERROR("A000300", "当前系统繁忙，请稍后再试"),
 
