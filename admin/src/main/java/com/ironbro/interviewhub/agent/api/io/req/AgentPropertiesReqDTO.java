@@ -2,6 +2,8 @@ package com.ironbro.interviewhub.agent.api.io.req;
 
 import lombok.Data;
 
+import java.util.List;
+
 @Data
 public class AgentPropertiesReqDTO {
 
@@ -12,4 +14,14 @@ public class AgentPropertiesReqDTO {
     private String apiFlowId;
     private Integer pageNum;
     private Integer pageSize;
+
+    /**
+     * 标签代码列表，用于筛选
+     */
+    private List<Integer> tagCodes;
+
+    /**
+     * 时间排序：asc / desc
+     */
+    private String timeSort;
 }

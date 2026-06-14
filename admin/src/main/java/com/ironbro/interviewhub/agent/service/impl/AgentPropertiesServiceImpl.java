@@ -76,8 +76,13 @@ public class AgentPropertiesServiceImpl extends ServiceImpl<AgentPropertiesMappe
     public PageInfo<AgentPropertiesRespDTO> getByPage(AgentPropertiesReqDTO requestParam) {
         Page<AgentPropertiesDO> page = new Page<>(requestParam.getPageNum(), requestParam.getPageSize());
         LambdaQueryWrapper<AgentPropertiesDO> queryWrapper = Wrappers.lambdaQuery(AgentPropertiesDO.class)
-                .eq(AgentPropertiesDO::getDelFlag, 0)
-                .orderByDesc(AgentPropertiesDO::getCreateTime);
+                .eq(AgentPropertiesDO::getDelFlag, 0);
+
+        if ("asc".equalsIgnoreCase(requestParam.getTimeSort())) {
+            queryWrapper.orderByAsc(AgentPropertiesDO::getCreateTime);
+        } else {
+            queryWrapper.orderByDesc(AgentPropertiesDO::getCreateTime);
+        }
         Page<AgentPropertiesDO> agentPropertiesDOPage = baseMapper.selectPage(page, queryWrapper);
         List<AgentPropertiesRespDTO> resultList = agentPropertiesDOPage.getRecords().stream()
                 .map(item -> {
