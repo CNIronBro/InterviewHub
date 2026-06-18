@@ -54,6 +54,9 @@ public class InterviewRecordDO {
     @TableField("duration_seconds")
     private Integer durationSeconds;
 
+    @TableField("report_status")
+    private String reportStatus;
+
     @TableField("create_time")
     private Date createTime;
 

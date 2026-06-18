@@ -29,6 +29,21 @@ public class InterviewQuestion {
     private Integer resumeScore;
     private String interviewType;
 
+    /**
+     * 难度：EASY / MEDIUM / HARD
+     */
+    private String difficulty;
+
+    /**
+     * 标签列表
+     */
+    private List<String> tags;
+
+    /**
+     * 预计答题时长（分钟）
+     */
+    private Integer expectedDuration;
+
     @CreatedDate
     private Date createTime;
 
