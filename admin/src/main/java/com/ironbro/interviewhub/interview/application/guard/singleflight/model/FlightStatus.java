@@ -6,7 +6,6 @@ import java.util.Locale;
  * 定义分布式 AI 请求协调状态机的状态集合，
  * 用于表示请求从运行中到成功、失败、取消或过期的全生命周期。
  *
- * @author 程序员牛肉
  */
 public enum FlightStatus {
     PENDING,

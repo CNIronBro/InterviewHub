@@ -12,7 +12,6 @@ import java.util.Map;
  * 面试 AI single-flight 的总配置类，负责承载本地复用、分布式复用、结果缓存、
  * 心跳续租以及重锁等待等运行参数，并支持按不同业务阶段覆盖差异化策略。
  *
- * @author 程序员牛肉
  */
 @Data
 @Component
@@ -73,7 +72,6 @@ public class InterviewAiSingleFlightConfiguration {
      * 按业务 stage 定义 single-flight 细粒度策略的配置对象，
      * 用于区分不同阶段的 heartbeat、TTL、压缩和 L1 缓存策略。
      *
-     * @author 程序员牛肉
      */
     @Data
     public static class StageFlightPolicy {

@@ -31,7 +31,6 @@ import java.util.function.Supplier;
  * 分布式 AI single-flight 核心服务，负责在集群内协调 owner 与 follower，
  * 完成请求抢占、结果复用、失败接管以及本地降级回退。
  *
- * @author 程序员牛肉
  */
 @Service
 @RequiredArgsConstructor
@@ -363,7 +362,6 @@ public class DistributedInterviewAiSingleFlightService {
     /**
      * 懒加载当前节点标识的内部工具类，用于生成 owner 节点身份。
      *
-     * @author 程序员牛肉
      */
     private static final class Holder {
         private static final String NODE_ID = resolveNodeId();
@@ -381,7 +379,6 @@ public class DistributedInterviewAiSingleFlightService {
      * 分布式协调过程中对异常进行归类后的内部失败对象，
      * 用于统一写入失败状态并决定是否允许重试接管。
      *
-     * @author 程序员牛肉
      */
     private record FlightFailure(FlightErrorType errorType, String errorCode, boolean retryable) {
     }

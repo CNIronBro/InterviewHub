@@ -11,7 +11,6 @@ import java.util.Map;
  * AI 结果的本地 L1 回放缓存，用于在短时间内直接复用已成功返回的结果，
  * 减少 follower 或重复请求再次访问 Redis 的开销。
  *
- * @author 程序员牛肉
  */
 @Component
 public class FlightReplayLocalCache {
@@ -61,7 +60,6 @@ public class FlightReplayLocalCache {
     /**
      * 本地缓存条目，保存可回放内容及其失效时间。
      *
-     * @author 程序员牛肉
      */
     private record CacheEntry(String value, long expireAtMillis) {
     }

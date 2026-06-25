@@ -6,7 +6,6 @@ import java.util.Locale;
  * 定义 AI single-flight 的运行模式，
  * 支持仅本地复用、仅分布式复用以及分布式失败后回退本地的混合模式。
  *
- * @author 程序员牛肉
  */
 public enum FlightMode {
     LOCAL,

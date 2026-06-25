@@ -18,7 +18,6 @@ import java.util.zip.GZIPOutputStream;
  * AI 结果序列化组件，负责对结果进行压缩、编码、校验摘要生成与反序列化恢复，
  * 以便安全地写入 Redis 并控制存储成本。
  *
- * @author 程序员牛肉
  */
 @Component
 public class FlightResultSerializer {

@@ -16,7 +16,6 @@ import java.util.function.BooleanSupplier;
  * owner 节点的 heartbeat 调度器，负责定时执行续租动作，
  * 保证长耗时 AI 请求在运行期间不会因为 TTL 到期而被误接管。
  *
- * @author 程序员牛肉
  */
 @Service
 @RequiredArgsConstructor

@@ -21,7 +21,6 @@ import java.util.Map;
  * 分布式 flight 的通知服务，负责把 owner 的终态结果写入 Redis Stream，
  * 并为 follower 提供阻塞等待通知的能力。
  *
- * @author 程序员牛肉
  */
 @Service
 @RequiredArgsConstructor

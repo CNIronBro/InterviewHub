@@ -6,7 +6,6 @@ import java.util.Locale;
  * 定义分布式 single-flight 协调过程中可能出现的动作类型，
  * 例如新 owner 抢占、接管、follower 等待以及结果回放。
  *
- * @author 程序员牛肉
  */
 public enum FlightAction {
     OWNER_NEW,
