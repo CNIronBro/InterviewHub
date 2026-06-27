@@ -16,7 +16,11 @@ public class InterviewSessionRuntimeSnapshot {
     private String sessionId;
     private Long userId;
     private String sessionStatus;
+    /**
+     * 版本号，CAS 防并发覆盖
+     */
     private Long snapshotVersion;
+
     private String snapshotLevel;
     private String resumeFileUrl;
     private String interviewType;
