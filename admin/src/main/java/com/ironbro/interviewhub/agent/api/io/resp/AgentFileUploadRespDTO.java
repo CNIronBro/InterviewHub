@@ -8,11 +8,18 @@ import java.util.Date;
 public class AgentFileUploadRespDTO {
 
     private Long id;
+
     private String sessionId;
+
     private String bizType;
+
     private String fileName;
+
     private Long fileSize;
+
     private String contentType;
+
     private String fileUrl;
+
     private Date createTime;
 }
