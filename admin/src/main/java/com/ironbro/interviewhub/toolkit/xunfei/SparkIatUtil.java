@@ -206,7 +206,40 @@ public class SparkIatUtil {
         if (audioFile == null || !audioFile.exists()) {
             return "文件不存在";
         }
-        return String.format("文件名: %s, 大小: %d bytes, 路径: %s", 
+        return String.format("文件名: %s, 大小: %d bytes, 路径: %s",
                 audioFile.getName(), audioFile.length(), audioFile.getAbsolutePath());
+    }
+
+    /**
+     * TreeMap 有序合并 + 相邻段去重。
+     * 将 ASR 返回的多个片段按 seg_id 排序，检测相邻段的文本重叠并去重。
+     */
+    public String mergeAndDedup(String[] segments, int[] segIds) {
+        if (segments == null || segments.length == 0) return "";
+        java.util.TreeMap<Integer, String> sorted = new java.util.TreeMap<>();
+        for (int i = 0; i < segments.length; i++) {
+            sorted.put(segIds[i], segments[i]);
+        }
+        StringBuilder result = new StringBuilder();
+        String prev = "";
+        for (String seg : sorted.values()) {
+            if (seg == null) continue;
+            // 相邻段去重：检查重叠部分
+            String deduped = removeOverlap(prev, seg);
+            result.append(deduped);
+            prev = seg;
+        }
+        return result.toString();
+    }
+
+    private String removeOverlap(String prev, String next) {
+        if (prev == null || prev.isEmpty()) return next;
+        int maxOverlap = Math.min(prev.length(), next.length());
+        for (int len = maxOverlap; len > 0; len--) {
+            if (prev.endsWith(next.substring(0, len))) {
+                return next.substring(len);
+            }
+        }
+        return next;
     }
 }
