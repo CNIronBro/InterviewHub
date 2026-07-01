@@ -65,4 +65,14 @@ public class Result<T> implements Serializable {
         result.setMessage(message);
         return result;
     }
+
+    /**
+     * 构建分页成功响应
+     */
+    public static <T> Result<PageInfo<T>> page(java.util.List<T> records, long total) {
+        Result<PageInfo<T>> result = new Result<>();
+        result.setCode(SUCCESS_CODE);
+        result.setData(new PageInfo<>(records, total));
+        return result;
+    }
 }

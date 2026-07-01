@@ -39,6 +39,11 @@ public class PageInfo<T> {
     public PageInfo() {
     }
 
+    public PageInfo(List<T> records, long total) {
+        this.records = records;
+        this.total = total;
+    }
+
     public PageInfo(Long current, Long size) {
         this.current = current;
         this.size = size;
