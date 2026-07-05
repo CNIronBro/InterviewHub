@@ -8,7 +8,9 @@ import com.ironbro.interviewhub.common.convention.exception.AbstractException;
 import com.ironbro.interviewhub.common.convention.result.Result;
 import com.ironbro.interviewhub.common.convention.result.Results;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.BindException;
@@ -22,18 +24,15 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * 全局异常处理器
+ * Global exception handling for REST controllers.
  */
 @Component("globalExceptionHandlerByAdmin")
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    /**
-     * 处理 @Valid 校验失败异常
-     */
     @ExceptionHandler(value = {MethodArgumentNotValidException.class, BindException.class})
-    public Result<Void> validExceptionHandler(HttpServletRequest request, Exception ex) {
+    public Result validExceptionHandler(HttpServletRequest request, Exception ex) {
         BindingResult bindingResult = ex instanceof MethodArgumentNotValidException methodArgumentNotValidException
                 ? methodArgumentNotValidException.getBindingResult()
                 : ((BindException) ex).getBindingResult();
@@ -42,11 +41,31 @@ public class GlobalExceptionHandler {
         return Results.failure(BaseErrorCode.CLIENT_ERROR.code(), exceptionStr);
     }
 
-    /**
-     * 处理自定义业务异常
-     */
+    @ExceptionHandler(value = ConstraintViolationException.class)
+    public Result constraintViolationExceptionHandler(HttpServletRequest request, ConstraintViolationException ex) {
+        String exceptionStr = ex.getConstraintViolations().stream()
+                .findFirst()
+                .map(item -> item.getMessage())
+                .orElse(StrUtil.EMPTY);
+        log.error("[{}] {} [ex] {}", request.getMethod(), getUrl(request), exceptionStr);
+        return Results.failure(BaseErrorCode.CLIENT_ERROR.code(), exceptionStr);
+    }
+
+    @ExceptionHandler(value = HttpMessageNotReadableException.class)
+    public Result httpMessageNotReadableExceptionHandler(HttpServletRequest request, HttpMessageNotReadableException ex) {
+        String exceptionStr = "请求体不能为空或格式错误";
+        log.error("[{}] {} [ex] {}", request.getMethod(), getUrl(request), exceptionStr);
+        return Results.failure(BaseErrorCode.CLIENT_ERROR.code(), exceptionStr);
+    }
+
+    @ExceptionHandler(value = IllegalArgumentException.class)
+    public Result illegalArgumentExceptionHandler(HttpServletRequest request, IllegalArgumentException ex) {
+        log.error("[{}] {} [ex] {}", request.getMethod(), getUrl(request), ex.getMessage());
+        return Results.failure(BaseErrorCode.CLIENT_ERROR.code(), ex.getMessage());
+    }
+
     @ExceptionHandler(value = {AbstractException.class})
-    public Result<Void> abstractException(HttpServletRequest request, AbstractException ex) {
+    public Result abstractException(HttpServletRequest request, AbstractException ex) {
         if (ex.getCause() != null) {
             log.error("[{}] {} [ex] {}", request.getMethod(), request.getRequestURL().toString(), ex.toString(), ex.getCause());
             return Results.failure(ex);
@@ -55,11 +74,8 @@ public class GlobalExceptionHandler {
         return Results.failure(ex);
     }
 
-    /**
-     * 兜底异常处理
-     */
     @ExceptionHandler(value = Throwable.class)
-    public Result<Void> defaultErrorHandler(HttpServletRequest request, Throwable throwable) {
+    public Result defaultErrorHandler(HttpServletRequest request, Throwable throwable) {
         log.error("[{}] {} ", request.getMethod(), getUrl(request), throwable);
         if (Objects.equals(throwable.getClass().getSuperclass().getSimpleName(), AbstractException.class.getSimpleName())) {
             String errorCode = ReflectUtil.getFieldValue(throwable, "errorCode").toString();

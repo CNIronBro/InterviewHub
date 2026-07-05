@@ -11,4 +11,8 @@ public interface LoginSessionService {
     String getCurrentToken();
 
     String getCurrentLoginId();
+
+    void logoutByToken(String token);
+
+    long getTokenTimeout(String token);
 }
