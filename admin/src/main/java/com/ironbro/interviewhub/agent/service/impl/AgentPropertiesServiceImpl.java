@@ -5,17 +5,20 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.ironbro.interviewhub.agent.service.AgentPropertiesService;
+import com.ironbro.interviewhub.agent.service.AgentTagService;
+import com.ironbro.interviewhub.common.convention.result.PageInfo;
+import com.ironbro.interviewhub.agent.dao.entity.AgentPropertiesDO;
+import com.ironbro.interviewhub.agent.dao.entity.AgentTag;
+import com.ironbro.interviewhub.agent.dao.mapper.AgentPropertiesMapper;
 import com.ironbro.interviewhub.agent.api.io.req.AgentPropertiesReqDTO;
 import com.ironbro.interviewhub.agent.api.io.resp.AgentPropertiesRespDTO;
-import com.ironbro.interviewhub.agent.dao.entity.AgentPropertiesDO;
-import com.ironbro.interviewhub.agent.dao.mapper.AgentPropertiesMapper;
-import com.ironbro.interviewhub.agent.service.AgentPropertiesService;
-import com.ironbro.interviewhub.common.convention.result.PageInfo;
+import com.ironbro.interviewhub.common.enums.AgentTagType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -23,7 +26,9 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class AgentPropertiesServiceImpl extends ServiceImpl<AgentPropertiesMapper, AgentPropertiesDO>
-        implements AgentPropertiesService {
+    implements AgentPropertiesService {
+
+    private final AgentTagService agentTagService;
 
     @Override
     @Transactional
@@ -34,6 +39,11 @@ public class AgentPropertiesServiceImpl extends ServiceImpl<AgentPropertiesMappe
         agentPropertiesDO.setUpdateTime(new Date());
         agentPropertiesDO.setDelFlag(0);
         save(agentPropertiesDO);
+        
+        // 处理标签数据
+        if (requestParam.getTagCodes() != null && !requestParam.getTagCodes().isEmpty()) {
+            createAgentTags(agentPropertiesDO.getId(), requestParam.getTagCodes());
+        }
     }
 
     @Override
@@ -44,6 +54,12 @@ public class AgentPropertiesServiceImpl extends ServiceImpl<AgentPropertiesMappe
                 .set(AgentPropertiesDO::getDelFlag, 1)
                 .set(AgentPropertiesDO::getUpdateTime, new Date());
         baseMapper.update(null, updateWrapper);
+        
+        // 删除相关标签数据
+        LambdaUpdateWrapper<AgentTag> tagUpdateWrapper = Wrappers.lambdaUpdate(AgentTag.class)
+                .eq(AgentTag::getAgentId, id)
+                .set(AgentTag::getDelFlag, 1);
+        agentTagService.update(tagUpdateWrapper);
     }
 
     @Override
@@ -57,6 +73,11 @@ public class AgentPropertiesServiceImpl extends ServiceImpl<AgentPropertiesMappe
                 .set(AgentPropertiesDO::getApiFlowId, requestParam.getApiFlowId())
                 .set(AgentPropertiesDO::getUpdateTime, new Date());
         update(updateWrapper);
+        
+        // 更新标签数据
+        if (requestParam.getTagCodes() != null) {
+            updateAgentTags(requestParam.getId(), requestParam.getTagCodes());
+        }
     }
 
     @Override
@@ -68,6 +89,8 @@ public class AgentPropertiesServiceImpl extends ServiceImpl<AgentPropertiesMappe
         AgentPropertiesRespDTO result = new AgentPropertiesRespDTO();
         if (agentPropertiesDO != null) {
             BeanUtils.copyProperties(agentPropertiesDO, result);
+            // 填充标签数据
+            result.setTags(getAgentTags(agentPropertiesDO.getId()));
         }
         return result;
     }
@@ -76,18 +99,15 @@ public class AgentPropertiesServiceImpl extends ServiceImpl<AgentPropertiesMappe
     public PageInfo<AgentPropertiesRespDTO> getByPage(AgentPropertiesReqDTO requestParam) {
         Page<AgentPropertiesDO> page = new Page<>(requestParam.getPageNum(), requestParam.getPageSize());
         LambdaQueryWrapper<AgentPropertiesDO> queryWrapper = Wrappers.lambdaQuery(AgentPropertiesDO.class)
-                .eq(AgentPropertiesDO::getDelFlag, 0);
-
-        if ("asc".equalsIgnoreCase(requestParam.getTimeSort())) {
-            queryWrapper.orderByAsc(AgentPropertiesDO::getCreateTime);
-        } else {
-            queryWrapper.orderByDesc(AgentPropertiesDO::getCreateTime);
-        }
+                .eq(AgentPropertiesDO::getDelFlag, 0)
+                .orderByDesc(AgentPropertiesDO::getCreateTime);
         Page<AgentPropertiesDO> agentPropertiesDOPage = baseMapper.selectPage(page, queryWrapper);
         List<AgentPropertiesRespDTO> resultList = agentPropertiesDOPage.getRecords().stream()
                 .map(item -> {
                     AgentPropertiesRespDTO respDTO = new AgentPropertiesRespDTO();
                     BeanUtils.copyProperties(item, respDTO);
+                    // 填充标签数据
+                    respDTO.setTags(getAgentTags(item.getId()));
                     return respDTO;
                 })
                 .collect(Collectors.toList());
@@ -100,6 +120,80 @@ public class AgentPropertiesServiceImpl extends ServiceImpl<AgentPropertiesMappe
         return pageInfo;
     }
 
+    /**
+     * 创建智能体标签
+     */
+    private void createAgentTags(Long agentId, List<Integer> tagCodes) {
+        List<AgentTag> agentTags = new ArrayList<>();
+        for (Integer tagCode : tagCodes) {
+            AgentTagType tagType = AgentTagType.getByCode(tagCode);
+            if (tagType != null) {
+                AgentTag agentTag = new AgentTag();
+                agentTag.setAgentId(agentId);
+                agentTag.setTagName(tagType.getName());
+                agentTag.setDescription(tagType.getName() + "标签");
+                agentTag.setCreateTime(new Date());
+                agentTag.setUpdateTime(new Date());
+                agentTag.setDelFlag(0);
+                agentTags.add(agentTag);
+            }
+        }
+        if (!agentTags.isEmpty()) {
+            agentTagService.saveBatch(agentTags);
+        }
+    }
+
+    /**
+     * 更新智能体标签
+     */
+    private void updateAgentTags(Long agentId, List<Integer> tagCodes) {
+        // 先删除原有标签
+        LambdaUpdateWrapper<AgentTag> deleteWrapper = Wrappers.lambdaUpdate(AgentTag.class)
+                .eq(AgentTag::getAgentId, agentId)
+                .set(AgentTag::getDelFlag, 1);
+        agentTagService.update(deleteWrapper);
+        
+        // 创建新标签
+        if (!tagCodes.isEmpty()) {
+            createAgentTags(agentId, tagCodes);
+        }
+    }
+
+    /**
+     * 获取智能体标签
+     */
+    private List<AgentPropertiesRespDTO.TagInfo> getAgentTags(Long agentId) {
+        LambdaQueryWrapper<AgentTag> queryWrapper = Wrappers.lambdaQuery(AgentTag.class)
+                .eq(AgentTag::getAgentId, agentId)
+                .eq(AgentTag::getDelFlag, 0);
+        List<AgentTag> agentTags = agentTagService.list(queryWrapper);
+        
+        return agentTags.stream().map(tag -> {
+            AgentPropertiesRespDTO.TagInfo tagInfo = new AgentPropertiesRespDTO.TagInfo();
+            // 根据标签名称获取对应的枚举
+            AgentTagType tagType = AgentTagType.getByName(tag.getTagName());
+            if (tagType != null) {
+                tagInfo.setCode(tagType.getCode());
+                tagInfo.setName(tagType.getName());
+            } else {
+                // 如果找不到对应枚举，使用默认值
+                tagInfo.setCode(11); // 其他
+                tagInfo.setName(tag.getTagName());
+                tagInfo.setColor("#95a5a6");
+            }
+            return tagInfo;
+        }).collect(Collectors.toList());
+    }
+
+    @Override
+    public List<AgentPropertiesDO> listTop10() {
+        LambdaQueryWrapper<AgentPropertiesDO> queryWrapper = Wrappers.lambdaQuery(AgentPropertiesDO.class)
+                .eq(AgentPropertiesDO::getDelFlag, 0)
+                .orderByDesc(AgentPropertiesDO::getCreateTime)
+                .last("limit 10"); // Limit to top 10
+        return baseMapper.selectList(queryWrapper);
+    }
+
     @Override
     public List<AgentPropertiesDO> listActiveAgents() {
         LambdaQueryWrapper<AgentPropertiesDO> queryWrapper = Wrappers.lambdaQuery(AgentPropertiesDO.class)
@@ -108,3 +202,8 @@ public class AgentPropertiesServiceImpl extends ServiceImpl<AgentPropertiesMappe
         return baseMapper.selectList(queryWrapper);
     }
 }
+
+
+
+
+
