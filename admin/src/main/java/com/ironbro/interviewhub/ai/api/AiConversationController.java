@@ -13,43 +13,57 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/v1/ai/conversations")
+@RequestMapping("/api/xunzhi/v1/ai/conversations")
 @RequiredArgsConstructor
 public class AiConversationController {
 
     private final AiConversationService aiConversationService;
 
     @PostMapping
-    public Result<AiSessionCreateRespDTO> createConversation(@RequestBody AiSessionCreateReqDTO requestParam,
-                                                              @CurrentUser String username) {
+    public Result<AiSessionCreateRespDTO> createConversation(@RequestBody AiSessionCreateReqDTO requestParam, @CurrentUser String username) {
         AiSessionCreateRespDTO result = aiConversationService.createConversationWithTitle(
-                username, requestParam.getAiId(), requestParam.getFirstMessage());
+                username,
+                requestParam.getAiId(),
+                requestParam.getFirstMessage()
+        );
         return Results.success(result);
     }
 
     @GetMapping
-    public Result<IPage<AiConversationRespDTO>> pageConversations(AiConversationPageReqDTO requestParam,
-                                                                   @CurrentUser String username) {
+    public Result<IPage<AiConversationRespDTO>> pageConversations(
+            AiConversationPageReqDTO requestParam,
+            @CurrentUser String username) {
         IPage<AiConversationRespDTO> result = aiConversationService.pageConversations(username, requestParam);
         return Results.success(result);
     }
 
-    @GetMapping("/{sessionId}")
-    public Result<AiConversationRespDTO> getConversationById(@PathVariable String sessionId,
-                                                              @CurrentUser String username) {
-        AiConversationRespDTO result = aiConversationService.getConversationBySessionId(sessionId, username);
-        return Results.success(result);
+    @PutMapping("/{sessionId}")
+    public Result<Void> updateConversation(@PathVariable String sessionId,
+                                           @RequestParam(required = false) Integer messageCount,
+                                           @RequestParam(required = false) String title,
+                                           @CurrentUser String username) {
+        aiConversationService.updateConversation(sessionId, messageCount, title, username);
+        return Results.success();
     }
 
     @PutMapping("/{sessionId}/end")
-    public Result<Void> endConversation(@PathVariable String sessionId, @CurrentUser String username) {
+    public Result<Void> endConversation(@PathVariable String sessionId,
+                                        @CurrentUser String username) {
         aiConversationService.endConversation(sessionId, username);
         return Results.success();
     }
 
     @DeleteMapping("/{sessionId}")
-    public Result<Void> deleteConversation(@PathVariable String sessionId, @CurrentUser String username) {
+    public Result<Void> deleteConversation(@PathVariable String sessionId,
+                                           @CurrentUser String username) {
         aiConversationService.deleteConversation(sessionId, username);
         return Results.success();
+    }
+
+    @GetMapping("/{sessionId}")
+    public Result<AiConversationRespDTO> getConversationById(@PathVariable String sessionId,
+                                                             @CurrentUser String username) {
+        AiConversationRespDTO result = aiConversationService.getConversationBySessionId(sessionId, username);
+        return Results.success(result);
     }
 }

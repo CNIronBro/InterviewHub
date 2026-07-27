@@ -26,5 +26,18 @@ public interface InterviewSessionRepository extends MongoRepository<InterviewSes
 
     @Query("{'userId': ?0, 'delFlag': ?1, 'conversationTitle': {$regex: ?2, $options: 'i'}}")
     Page<InterviewSession> findByUserIdAndDelFlagAndTitleContaining(
-            Long userId, Integer delFlag, String keyword, Pageable pageable);
+            Long userId,
+            Integer delFlag,
+            String keyword,
+            Pageable pageable
+    );
+
+    @Query("{'userId': ?0, 'status': ?1, 'delFlag': ?2, 'conversationTitle': {$regex: ?3, $options: 'i'}}")
+    Page<InterviewSession> findByUserIdAndStatusAndDelFlagAndTitleContaining(
+            Long userId,
+            String status,
+            Integer delFlag,
+            String keyword,
+            Pageable pageable
+    );
 }

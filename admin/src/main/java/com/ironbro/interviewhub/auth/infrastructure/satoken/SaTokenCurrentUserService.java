@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class SaTokenCurrentUserService implements CurrentUserService {
 
-    private static final String USER_ID_CACHE_KEY = "interview-hub:user:id:";
+    private static final String USER_ID_CACHE_KEY = "xunzhi:user:id:";
 
     private final StringRedisTemplate stringRedisTemplate;
     private final UserMapper userMapper;

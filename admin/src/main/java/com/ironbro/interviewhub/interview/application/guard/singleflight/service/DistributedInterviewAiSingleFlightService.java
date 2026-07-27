@@ -53,7 +53,7 @@ public class DistributedInterviewAiSingleFlightService {
     private final FlightReplayLocalCache flightReplayLocalCache;
 
     /**
-     * 【面试重点】统一入口：根据配置决定走本地还是分布式 Single-flight。
+     * 统一入口：根据配置决定走本地还是分布式 Single-flight。
      * - LOCAL 模式：直接走本地 ConcurrentHashMap + CompletableFuture
      * - DISTRIBUTED 模式：走 Redis Lua 协调，失败抛异常
      * - HYBRID 模式（默认）：先走分布式，分布式挂了降级到本地（兜底保障）
@@ -77,7 +77,7 @@ public class DistributedInterviewAiSingleFlightService {
     }
 
     /**
-     * 【面试重点】分布式协调核心：通过 Redis Lua 判断角色，五路分支。
+     * 分布式协调核心：通过 Redis Lua 判断角色，五路分支。
      *
      * ① 先查 L1 本地缓存：最近成功的结果直接返回，零网络开销
      * ② 循环最多 3 次（处理角色切换和竞争）：
@@ -142,7 +142,7 @@ public class DistributedInterviewAiSingleFlightService {
     }
 
     /**
-     * 【面试重点】owner 执行路径：标记运行 → 启动心跳 → 执行 AI → 存储结果 → 通知 follower。
+     * owner 执行路径：标记运行 → 启动心跳 → 执行 AI → 存储结果 → 通知 follower。
      *
      * ① markRunning：将 meta 状态从 PENDING 推进到 RUNNING，防止被接管
      * ② 启动心跳：定时续期 meta 的 heartbeatAt/expireAt，防止被 follower 判定为宕机
@@ -219,7 +219,7 @@ public class DistributedInterviewAiSingleFlightService {
     }
 
     /**
-     * 【面试重点】follower 等待逻辑：Stream 阻塞读取 + 轮询兜底，双通道保证不丢通知。
+     * follower 等待逻辑：Stream 阻塞读取 + 轮询兜底，双通道保证不丢通知。
      *
      * 流程：循环直到 deadline 超时
      *   ① 先查 L1 缓存 / Redis result（owner 可能已经完成了）
@@ -310,7 +310,7 @@ public class DistributedInterviewAiSingleFlightService {
     }
 
     /**
-     * 【面试重点】异常分类：决定失败是否可以重试接管。
+     * 异常分类：决定失败是否可以重试接管。
      * - TIMEOUT/OVERLOAD/PROVIDER → retryable=true，follower 可以接管重试
      * - VALIDATION/UNEXPECTED → retryable=false，直接失败不接管
      * 这个设计保证临时性故障（超时/过载）可以被接管，而业务错误（参数非法）不会反复重试

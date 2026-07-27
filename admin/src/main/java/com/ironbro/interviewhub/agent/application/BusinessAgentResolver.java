@@ -32,17 +32,25 @@ public class BusinessAgentResolver {
             AgentPropertiesDO agentProperties = agentPropertiesLoader.getByAgentName(candidateAgentName);
             if (agentProperties != null) {
                 if (StrUtil.isNotBlank(configuredAgentName) && !configuredAgentName.trim().equals(candidateAgentName)) {
-                    log.warn("Configured agent not found, fallback matched scene={}, configuredName={}, matchedName={}",
-                            scene.getCode(), configuredAgentName, candidateAgentName);
+                    log.warn(
+                            "Configured agent not found, fallback matched scene={}, configuredName={}, matchedName={}, agentId={}",
+                            scene.getCode(),
+                            configuredAgentName,
+                            candidateAgentName,
+                            agentProperties.getId()
+                    );
                 } else {
-                    log.info("Resolved business agent scene={}, agentName={}", scene.getCode(), candidateAgentName);
+                    log.info("Resolved business agent scene={}, agentName={}, agentId={}",
+                            scene.getCode(), candidateAgentName, agentProperties.getId());
                 }
                 return agentProperties;
             }
         }
 
         log.error("No agent configuration found for scene={}, candidateNames={}", scene.getCode(), candidateAgentNames);
-        throw new ClientException("agent binding not found for scene=" + scene.getCode(),
-                InterviewErrorCodeEnum.AGENT_CONFIG_NOT_FOUND);
+        throw new ClientException(
+                "agent binding not found for scene=" + scene.getCode() + ", candidateNames=" + candidateAgentNames,
+                InterviewErrorCodeEnum.AGENT_CONFIG_NOT_FOUND
+        );
     }
 }

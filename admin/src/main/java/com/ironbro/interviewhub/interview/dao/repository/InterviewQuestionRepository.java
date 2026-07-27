@@ -18,5 +18,28 @@ public interface InterviewQuestionRepository extends MongoRepository<InterviewQu
 
     Page<InterviewQuestion> findByUserNameAndDelFlagOrderByCreateTimeDesc(String userName, Integer delFlag, Pageable pageable);
 
+    /**
+     * 分页查询所有面试题
+     */
+    Page<InterviewQuestion> findByDelFlagOrderByCreateTimeDesc(Integer delFlag, Pageable pageable);
+
+    /**
+     * 根据面试类型查询面试题列表
+     */
     List<InterviewQuestion> findByInterviewTypeAndDelFlagOrderByCreateTimeDesc(String interviewType, Integer delFlag);
+
+    /**
+     * 根据智能体ID查询面试题列表
+     */
+    List<InterviewQuestion> findByAgentIdAndDelFlagOrderByCreateTimeDesc(Long agentId, Integer delFlag);
+
+    /**
+     * 统计用户的面试题数量
+     */
+    Integer countByUserNameAndDelFlag(String userName, Integer delFlag);
+
+    /**
+     * 统计指定面试类型的数量
+     */
+    Integer countByInterviewTypeAndDelFlag(String interviewType, Integer delFlag);
 }

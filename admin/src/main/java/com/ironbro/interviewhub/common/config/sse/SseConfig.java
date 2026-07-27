@@ -36,4 +36,10 @@ public class SseConfig {
      * 是否启用心跳机制
      */
     private Boolean enableHeartbeat = true;
+
+    /**
+     * 是否启用详细日志
+     * 默认关闭
+     */
+    private Boolean enableVerboseLogging = false;
 }

@@ -54,8 +54,11 @@ public class InterviewRecordDO {
     @TableField("duration_seconds")
     private Integer durationSeconds;
 
-    @TableField("report_status")
-    private String reportStatus;
+    /**
+     * 会话快照（JSON）
+     */
+    @TableField("session_snapshot_json")
+    private String sessionSnapshotJson;
 
     @TableField("create_time")
     private Date createTime;

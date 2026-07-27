@@ -30,32 +30,51 @@ public class InterviewAnswerIdempotencyService {
         }
         String replayPayload = stringRedisTemplate.opsForValue().get(replayKey(sessionId, requestId));
         if (StrUtil.isNotBlank(replayPayload)) {
-            InterviewAnswerRespDTO replay = safeParseReplay(replayPayload);
-            if (replay != null) return TryStartResult.succeeded(replay);
+            InterviewAnswerRespDTO replayResponse = safeParseReplay(replayPayload);
+            if (replayResponse != null) {
+                return TryStartResult.succeeded(replayResponse);
+            }
         }
 
         Boolean started = stringRedisTemplate.opsForValue().setIfAbsent(
-                processingKey(sessionId, requestId), "1",
-                resolveProcessingExpireSeconds(), TimeUnit.SECONDS);
-        return Boolean.TRUE.equals(started) ? TryStartResult.newRequest() : TryStartResult.processing();
+                processingKey(sessionId, requestId),
+                "1",
+                resolveProcessingExpireSeconds(),
+                TimeUnit.SECONDS
+        );
+        if (Boolean.TRUE.equals(started)) {
+            return TryStartResult.newRequest();
+        }
+        return TryStartResult.processing();
     }
 
     public void markSucceeded(String sessionId, String requestId, InterviewAnswerRespDTO response) {
-        if (StrUtil.isBlank(sessionId) || StrUtil.isBlank(requestId) || response == null) return;
+        if (StrUtil.isBlank(sessionId) || StrUtil.isBlank(requestId) || response == null) {
+            return;
+        }
+        String replayPayload = JSON.toJSONString(response);
         stringRedisTemplate.opsForValue().set(
-                replayKey(sessionId, requestId), JSON.toJSONString(response),
-                resolveReplayExpireHours(), TimeUnit.HOURS);
+                replayKey(sessionId, requestId),
+                replayPayload,
+                resolveReplayExpireHours(),
+                TimeUnit.HOURS
+        );
         stringRedisTemplate.delete(processingKey(sessionId, requestId));
     }
 
     public void clearProcessing(String sessionId, String requestId) {
-        if (StrUtil.isBlank(sessionId) || StrUtil.isBlank(requestId)) return;
+        if (StrUtil.isBlank(sessionId) || StrUtil.isBlank(requestId)) {
+            return;
+        }
         stringRedisTemplate.delete(processingKey(sessionId, requestId));
     }
 
     private InterviewAnswerRespDTO safeParseReplay(String payload) {
-        try { return JSON.parseObject(payload, InterviewAnswerRespDTO.class); }
-        catch (Exception e) { return null; }
+        try {
+            return JSON.parseObject(payload, InterviewAnswerRespDTO.class);
+        } catch (Exception ex) {
+            return null;
+        }
     }
 
     private String processingKey(String sessionId, String requestId) {
@@ -70,7 +89,8 @@ public class InterviewAnswerIdempotencyService {
         Long configured = configuration.getProcessingExpireSeconds();
         long base = configured == null || configured <= 0 ? 120L : configured;
         Long longTail = configuration.getProcessingLongTailExpireSeconds();
-        return longTail == null || longTail <= 0 ? base : Math.max(base, longTail);
+        long guard = longTail == null || longTail <= 0 ? base : longTail;
+        return Math.max(base, guard);
     }
 
     private long resolveReplayExpireHours() {
@@ -88,10 +108,22 @@ public class InterviewAnswerIdempotencyService {
             this.replayResponse = replayResponse;
         }
 
-        public static TryStartResult newRequest() { return new TryStartResult(TryStartStatus.NEW, null); }
-        public static TryStartResult processing() { return new TryStartResult(TryStartStatus.PROCESSING, null); }
-        public static TryStartResult succeeded(InterviewAnswerRespDTO r) { return new TryStartResult(TryStartStatus.SUCCEEDED, r); }
+        public static TryStartResult newRequest() {
+            return new TryStartResult(TryStartStatus.NEW, null);
+        }
+
+        public static TryStartResult processing() {
+            return new TryStartResult(TryStartStatus.PROCESSING, null);
+        }
+
+        public static TryStartResult succeeded(InterviewAnswerRespDTO replayResponse) {
+            return new TryStartResult(TryStartStatus.SUCCEEDED, replayResponse);
+        }
     }
 
-    public enum TryStartStatus { NEW, PROCESSING, SUCCEEDED }
+    public enum TryStartStatus {
+        NEW,
+        PROCESSING,
+        SUCCEEDED
+    }
 }

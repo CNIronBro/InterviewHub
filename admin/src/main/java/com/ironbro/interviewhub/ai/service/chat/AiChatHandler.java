@@ -11,7 +11,7 @@ public interface AiChatHandler {
 
     String getType();
 
-    void streamToSink(AiPropertiesDO aiProperties, String userMessage,
-                      List<AiMessageHistoryRespDTO> historyMessages,
+    void streamToSink(AiPropertiesDO aiProperties, String userMessage, List<AiMessageHistoryRespDTO> historyMessages,
                       FluxSink<String> sink, AIContentAccumulator accumulator) throws Exception;
 }
+

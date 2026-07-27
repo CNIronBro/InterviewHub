@@ -1,5 +1,10 @@
 package com.ironbro.interviewhub.interview.dao.entity;
 
+import com.ironbro.interviewhub.interview.api.io.req.DemeanorScoreDTO;
+import com.ironbro.interviewhub.interview.service.model.InterviewFlowState;
+import com.ironbro.interviewhub.interview.service.model.InterviewRuntimeConfidence;
+import com.ironbro.interviewhub.interview.service.model.InterviewRuntimeScoreAggregate;
+import com.ironbro.interviewhub.interview.service.model.InterviewTurnLog;
 import lombok.Data;
 
 import java.util.Date;
@@ -22,6 +27,11 @@ public class InterviewSessionRuntimeSnapshot {
     private Long snapshotVersion;
 
     private String snapshotLevel;
+
+    private InterviewRuntimeConfidence rebuildConfidence;
+
+    private Date snapshotUpdatedAt;
+
     private String resumeFileUrl;
     private String interviewType;
     private String direction;
@@ -35,25 +45,31 @@ public class InterviewSessionRuntimeSnapshot {
     private Integer resumeScore;
     private Integer demeanorScore;
 
-    /** 当前流程状态 */
-    private String flowStatus;
-    private Integer currentIndex;
-    private Integer totalQuestions;
-    private Integer followUpCount;
-    private Integer maxFollowUp;
+    private DemeanorScoreDTO demeanorDetails;
 
-    /** 追问题目 */
+    private InterviewFlowState flow;
+
+    private InterviewRuntimeScoreAggregate scoreAggregate;
+
     private Map<String, String> followUpQuestions;
-    /** 最近轮次日志 */
-    private List<String> recentTurns;
+
+    private List<InterviewTurnLog> recentTurns;
+
     private Integer recentTurnCount;
+
+    private Long archiveWatermark;
+
     private Long lastTurnSeq;
     private String lastAppliedRequestId;
     private String lastMutationId;
     private Date lastMutationTime;
+
+    private String lastCommittedQuestionNumber;
+
+    private String lastCommittedTurnDigest;
+
     private Long materialVersion;
 
-    private Date snapshotUpdatedAt;
     private Date createTime;
     private Date updateTime;
 }

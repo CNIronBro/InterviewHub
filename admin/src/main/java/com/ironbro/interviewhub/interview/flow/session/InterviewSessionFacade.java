@@ -42,7 +42,7 @@ import java.util.Map;
  * 1. 权限校验（requireOwnedSession — 校验会话归属当前用户）
  * 2. 状态推进（DRAFT → READY → IN_PROGRESS → FINISHED）
  * 3. 组装请求参数，委托下层执行
- * 【面试要点】Facade 不含业务逻辑，只做"守门 + 转发"
+ * Facade 不含业务逻辑，只做"守门 + 转发"
  */
 @Service
 @Slf4j

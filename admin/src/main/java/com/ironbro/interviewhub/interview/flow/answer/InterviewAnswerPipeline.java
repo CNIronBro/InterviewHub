@@ -34,7 +34,7 @@ import java.util.Objects;
 /**
  * 【核心】答题流水线：用户提交答案后的完整处理链路。
  * 8 步流水线：①参数校验 → ②requestId归一化 → ③幂等门禁 → ④加载当前题+flow → ⑤题号级加锁 → ⑥二次校验题号 → ⑦AI评分 → ⑧推进flow+提交分数
- * 【面试要点】幂等两阶段设计(processing防并发+replay回放)、题号级锁(非会话级)、追问不计入总分、分数提交失败回滚flow、追问规则引擎二次决策
+ * 幂等两阶段设计(processing防并发+replay回放)、题号级锁(非会话级)、追问不计入总分、分数提交失败回滚flow、追问规则引擎二次决策
  */
 @Component
 @RequiredArgsConstructor
@@ -167,7 +167,7 @@ public class InterviewAnswerPipeline {
     }
 
     /**
-     * 【面试重点】两阶段幂等控制：
+     * 两阶段幂等控制：
      * - SUCCEEDED：已有结果 → 直接回放缓存的响应，不重复调 AI
      * - PROCESSING：其他请求正在处理 → 快速失败，前端可重试
      * - NEW：首次请求 → 标记 processing，再查 MongoDB 热快照是否有软回放记录（防 Redis 丢失后重复调 AI）
@@ -177,7 +177,6 @@ public class InterviewAnswerPipeline {
                 interviewAnswerIdempotencyService.tryStart(ctx.sessionId, ctx.requestId);
         switch (tryStartResult.getStatus()) {
             case SUCCEEDED -> {
-                // 已有结果，直接回放（replay key 缓存了上次的完整响应）
                 InterviewAnswerRespDTO replayResponse = tryStartResult.getReplayResponse();
                 if (replayResponse != null) {
                     Metrics.counter("idempotency_replay_hit_total").increment();
@@ -279,7 +278,7 @@ public class InterviewAnswerPipeline {
     }
 
     /**
-     * 【面试重点】加锁后二次校验题号。
+     * 加锁后二次校验题号。
      * 为什么要二次校验？因为 stepLoadCurrentQuestion 和 stepAcquireQuestionLock 之间有时间窗口，
      * 另一个请求可能已经推进了 flow（题号变了），导致当前请求拿到的是旧题号。
      * 加锁后重新读 flow，确认题号没变，才能继续处理。
@@ -312,7 +311,7 @@ public class InterviewAnswerPipeline {
     }
 
     /**
-     * 【面试重点】AI 评分：调大模型对用户答案评分，提取结构化结果。
+     * AI 评分：调大模型对用户答案评分，提取结构化结果。
      * 返回字段：score（分数）、feedback（反馈）、follow_up_needed（是否需要追问）、follow_up_question（追问题目）、missing_points（遗漏知识点）
      * 注意：此时仅计算，不入账（分数提交在 stepAdvanceFlowAndAssemble 中）
      */
@@ -365,7 +364,7 @@ public class InterviewAnswerPipeline {
     }
 
     /**
-     * 【面试重点】推进 flow + 组装响应。核心分支逻辑：
+     * 推进 flow + 组装响应。核心分支逻辑：
      * ① 拍 flow 快照（用于失败回滚）
      * ② 追问规则引擎决策：AI 说要追问 + 规则引擎确认 + 未超过最大追问数 → 走追问分支
      * ③ 追问分支：生成追问题 → 缓存 → 推进 flow → 提交分数 → 返回追问题
@@ -464,7 +463,7 @@ public class InterviewAnswerPipeline {
     }
 
     /**
-     * 【面试重点】提交分数入账。
+     * 提交分数入账。
      * - 追问不计入总分（追问只是深挖，不是新的独立问题）
      * - 只有主问题才调 addSessionScore（Lua 原子更新 sum/count/avg）
      * - 在”返回成功前”才提交，避免失败重试重复计分
@@ -521,7 +520,7 @@ public class InterviewAnswerPipeline {
     }
 
     /**
-     * 【面试重点】追问规则引擎：AI 返回 follow_up_needed 后，规则引擎二次决策。
+     * 追问规则引擎：AI 返回 follow_up_needed 后，规则引擎二次决策。
      * 综合考虑：面试方向、当前是否已是追问、已追问次数、最大追问数、分数、missing_points。
      * 规则引擎可以覆盖 AI 的决策（比如分数太低直接跳过追问，进入下一题）。
      */

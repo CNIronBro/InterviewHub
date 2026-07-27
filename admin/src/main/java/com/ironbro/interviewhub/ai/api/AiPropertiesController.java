@@ -1,14 +1,14 @@
 package com.ironbro.interviewhub.ai.api;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.ironbro.interviewhub.ai.service.AiPropertiesService;
-import com.ironbro.interviewhub.common.convention.result.Result;
-import com.ironbro.interviewhub.common.convention.result.Results;
 import com.ironbro.interviewhub.ai.api.io.req.AiPropertiesCreateReqDTO;
 import com.ironbro.interviewhub.ai.api.io.req.AiPropertiesPageReqDTO;
 import com.ironbro.interviewhub.ai.api.io.req.AiPropertiesUpdateReqDTO;
 import com.ironbro.interviewhub.ai.api.io.resp.AiModelOptionRespDTO;
 import com.ironbro.interviewhub.ai.api.io.resp.AiPropertiesRespDTO;
+import com.ironbro.interviewhub.ai.service.AiPropertiesService;
+import com.ironbro.interviewhub.common.convention.result.Result;
+import com.ironbro.interviewhub.common.convention.result.Results;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 

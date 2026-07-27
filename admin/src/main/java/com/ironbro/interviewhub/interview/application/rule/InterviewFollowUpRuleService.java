@@ -9,6 +9,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+/**
+ * LiteFlow-based follow-up rule service.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -22,29 +25,44 @@ public class InterviewFollowUpRuleService {
         if (context == null) {
             return InterviewFollowUpRuleDecision.noFollowUp(
                     Math.max(resolveDefaultMaxFollowUp(), 1),
-                    "RULE_CONTEXT_MISSING", "规则上下文缺失",
-                    resolveDefaultChainId(), ruleConfiguration.getRuleVersion(), true);
+                    "RULE_CONTEXT_MISSING",
+                    "rule context is missing",
+                    resolveDefaultChainId(),
+                    ruleConfiguration.getRuleVersion(),
+                    true
+            );
         }
 
         hydrateContext(context);
         if (!Boolean.TRUE.equals(ruleConfiguration.getEnable())) {
-            return fallbackDecision(context, "RULE_ENGINE_DISABLED", "规则引擎已禁用");
+            return fallbackDecision(context, "RULE_ENGINE_DISABLED", "rule engine disabled");
         }
 
         try {
-            LiteflowResponse response = flowExecutor.execute2Resp(context.getChainId(), null, context);
+            LiteflowResponse response = executeChain(context.getChainId(), context);
             if (response == null || !response.isSuccess()) {
-                throw new IllegalStateException("LiteFlow 执行失败");
+                Throwable cause = response == null ? null : response.getCause();
+                throw new IllegalStateException("LiteFlow execution failed", cause);
             }
             context.finalizeDecision(false);
             return context.getDecision();
         } catch (Exception ex) {
             if (Boolean.TRUE.equals(ruleConfiguration.getFailOpen())) {
-                log.warn("LiteFlow 追问决策失败，降级到兜底策略, sessionId={}", context.getSessionId(), ex);
-                return fallbackDecision(context, "RULE_ENGINE_FALLBACK", "降级到兜底追问策略");
+                log.warn(
+                        "LiteFlow follow-up decision failed, fallback to legacy policy, sessionId={}, chainId={}, questionNumber={}",
+                        context.getSessionId(),
+                        context.getChainId(),
+                        context.getQuestionNumber(),
+                        ex
+                );
+                return fallbackDecision(context, "RULE_ENGINE_FALLBACK", "fallback to legacy follow-up policy");
             }
-            throw new IllegalStateException("LiteFlow 追问决策失败", ex);
+            throw new IllegalStateException("LiteFlow follow-up decision failed", ex);
         }
+    }
+
+    LiteflowResponse executeChain(String chainId, InterviewFollowUpRuleContext context) {
+        return flowExecutor.execute2Resp(chainId, null, context);
     }
 
     private void hydrateContext(InterviewFollowUpRuleContext context) {
@@ -57,26 +75,41 @@ public class InterviewFollowUpRuleService {
     }
 
     private InterviewFollowUpRuleDecision fallbackDecision(
-            InterviewFollowUpRuleContext context, String reasonCode, String reasonText) {
+            InterviewFollowUpRuleContext context,
+            String fallbackReasonCode,
+            String fallbackReasonText) {
         int resolvedMax = resolveMaxFollowUp(context.getMaxFollowUp());
         boolean underLimit = context.getFollowUpCount() < resolvedMax;
         boolean needFollowUp = context.isFollowUpNeededFromAi() && underLimit;
-        String code = needFollowUp ? "AI_SUGGESTED" : (underLimit ? reasonCode : "FOLLOW_UP_LIMIT_REACHED");
-        String text = needFollowUp ? "AI 建议追问" : (underLimit ? reasonText : "追问次数已达上限");
+        String reasonCode = needFollowUp
+                ? "AI_SUGGESTED"
+                : (underLimit ? fallbackReasonCode : "FOLLOW_UP_LIMIT_REACHED");
+        String reasonText = needFollowUp
+                ? "follow_up_needed from ai result"
+                : (underLimit ? fallbackReasonText : "follow-up limit reached");
         InterviewFollowUpRuleDecision decision = InterviewFollowUpRuleDecision.noFollowUp(
-                resolvedMax, code, text, resolveDefaultChainId(),
-                ruleConfiguration.getRuleVersion(), true);
+                resolvedMax,
+                reasonCode,
+                reasonText,
+                resolveDefaultChainId(),
+                ruleConfiguration.getRuleVersion(),
+                true
+        );
         decision.setNeedFollowUp(needFollowUp);
         return decision;
     }
 
     private String resolveDefaultChainId() {
         return StrUtil.isNotBlank(ruleConfiguration.getDefaultChainId())
-                ? ruleConfiguration.getDefaultChainId() : "default_followup_chain";
+                ? ruleConfiguration.getDefaultChainId()
+                : "default_followup_chain";
     }
 
     private int resolveMaxFollowUp(int fallbackMaxFollowUp) {
-        return fallbackMaxFollowUp > 0 ? fallbackMaxFollowUp : resolveDefaultMaxFollowUp();
+        if (fallbackMaxFollowUp > 0) {
+            return fallbackMaxFollowUp;
+        }
+        return resolveDefaultMaxFollowUp();
     }
 
     private int resolveDefaultMaxFollowUp() {

@@ -34,7 +34,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * 【面试重点】实时语音转写的产品侧 WebSocket 端点（全局两条 WS 中的第一条）。
+ * 实时语音转写的产品侧 WebSocket 端点（全局两条 WS 中的第一条）。
  *
  * 职责定位：前端 ↔ 后端的通信入口，负责建连鉴权、控制指令分发、接收二进制音频帧、
  *          回推结构化转写结果。不直接跟讯飞 AST 通信——那条链路在 XunfeiAudioService 里。
@@ -75,7 +75,7 @@ public class AudioTranscriptionWebSocketHandler {
     private static final ConcurrentMap<String, ScheduledFuture<?>> HEARTBEAT_TASKS = new ConcurrentHashMap<>(); // sessionId → 心跳定时任务
 
     /**
-     * 【面试重点】建连三步：鉴权 → 登记映射 → 启动心跳。
+     * 建连三步：鉴权 → 登记映射 → 启动心跳。
      * 鉴权失败直接关闭连接，不建立任何映射。心跳 30s 间隔，用的是独立 ScheduledExecutor。
      */
     @OnOpen
@@ -134,7 +134,7 @@ public class AudioTranscriptionWebSocketHandler {
     }
 
     /**
-     * 【面试重点】二进制消息 = 音频帧。这是生产者-消费者模型的"生产者"端：
+     * 二进制消息 = 音频帧。这是生产者-消费者模型的"生产者"端：
      * 前端推 PCM 分片 → 写入当前会话的 Pipe OutputStream → 讯飞发送线程从 Pipe 读端消费。
      * 如果还没有 start_transcription，直接拒绝写入。
      */
@@ -167,7 +167,7 @@ public class AudioTranscriptionWebSocketHandler {
     }
 
     /**
-     * 【面试重点】断连清理三板斧：停止转写会话 → 取消心跳 → 移除用户映射。
+     * 断连清理三板斧：停止转写会话 → 取消心跳 → 移除用户映射。
      * 顺序重要：先关 Pipe 断开讯飞链路，再清心跳避免定时任务空转，最后清 mapping。
      */
     @OnClose
@@ -251,7 +251,7 @@ public class AudioTranscriptionWebSocketHandler {
     }
 
     /**
-     * 【面试重点】创建转写会话的入口。核心流程：
+     * 创建转写会话的入口。核心流程：
      * ① 已存在活跃会话 → 拒绝重复 start
      * ② 否则先停掉旧会话 → 创建新 Context（Pipe 对 + 原子标志）→ 调 XunfeiAudioService 建讯飞 WS
      * ③ 并发控制：putIfAbsent 防止两个线程同时创建（只有第一个成功，第二个关闭自己创建的资源）
@@ -287,7 +287,7 @@ public class AudioTranscriptionWebSocketHandler {
     }
 
     /**
-     * 【面试重点】创建转写上下文并启动讯飞 AST 连接 —— 整个 ASR 链路最核心的方法。
+     * 创建转写上下文并启动讯飞 AST 连接 —— 整个 ASR 链路最核心的方法。
      *
      * 数据流架构（对照看 XunfeiAudioService.realTimeAudioToText）：
      * ① 创建 64KB Piped 流对：audioOutputStream(写) ↔ audioInputStream(读)
@@ -338,11 +338,6 @@ public class AudioTranscriptionWebSocketHandler {
         }
     }
 
-    /**
-     * 【面试重点】stopRequested=true → 关闭 OutputStream → Pipe 断开 → 讯飞读端读到 EOF → 发 end 帧 → AST 收尾。
-     * 这一串因果链的核心是"先关写端"——如果不关 OutputStream，讯飞读端永远等不到流结束。
-     * 注意：stop 不发 final。final 是讯飞自然完成时的产物，stop 是用户主动中断。
-     */
     private boolean stopTranscriptionSession(String sessionId) {
         TranscriptionSessionContext context = TRANSCRIPTION_CONTEXTS.remove(sessionId);
         if (context == null) {
@@ -594,7 +589,7 @@ public class AudioTranscriptionWebSocketHandler {
     }
 
     /**
-     * 【面试重点】转写会话上下文 —— 借鉴 NIO Buffer 异步缓冲思想。
+     * 转写会话上下文 —— 借鉴 NIO Buffer 异步缓冲思想。
      *
      * audioOutputStream/audioInputStream: 一对 64KB Piped 流，构成生产者-消费者模型的管道。
      *   前端 WS 线程（生产者）写 audioOutputStream → 讯飞发送线程（消费者）读 audioInputStream。

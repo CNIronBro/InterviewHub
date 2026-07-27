@@ -13,12 +13,13 @@ public class SaTokenAuthInterceptorConfig implements WebMvcConfigurer {
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(new SaInterceptor(handle -> SaRouter
-                .match("/api/v1/**")
-                .notMatch("/api/v1/users/login")
-                .notMatch("/api/v1/users/register")
-                .notMatch("/api/v1/users/has-username")
-                .notMatch("/api/v1/users/check-login")
-                .notMatch("/api/v1/ai/**")
+                .match("/api/xunzhi/v1/**")
+                .notMatch("/api/xunzhi/v1/users/login")
+                .notMatch("/api/xunzhi/v1/users/register")
+                .notMatch("/api/xunzhi/v1/users/has-username")
+                .notMatch(("/api/xunzhi/v1/users/check-login"))
+                .notMatch("/api/xunzhi/v1/ai/doubao/**")
+                .notMatch("/api/xunzhi/v1/ai/roleplay/**")
                 .check(StpUtil::checkLogin)
         )).addPathPatterns("/**");
     }

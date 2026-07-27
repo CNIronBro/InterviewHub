@@ -43,7 +43,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 【面试重点】讯飞语音服务 —— 全局两条 WebSocket 中的第二条（后端 → 讯飞 AST）。
+ * 讯飞语音服务 —— 全局两条 WebSocket 中的第二条（后端 → 讯飞 AST）。
  *
  * 两种模式：
  * - convertAudioToText：文件模式，IatClient 上传完整 PCM 文件，适用于非实时场景
@@ -159,7 +159,7 @@ public class XunfeiAudioService {
     }
 
     /**
-     * 【面试重点】实时流式转写入口 —— 整个 ASR 链路最核心的方法之一。
+     * 实时流式转写入口 —— 整个 ASR 链路最核心的方法之一。
      *
      * 调用方（AudioTranscriptionWebSocketHandler）传入的是 Pipe 的 audioInputStream（读端），
      * 不是前端 ByteBuffer。这是生产者-消费者模型的关键：前端写 Pipe 写端，这边读 Pipe 读端。
@@ -337,7 +337,7 @@ public class XunfeiAudioService {
     }
 
     /**
-     * 【面试重点】seg_id 提取 + fallback 兜底。三层防御：
+     * seg_id 提取 + fallback 兜底。三层防御：
      * ① 从三个位置提取 seg_id（data.seg_id → st.seg_id → st.sn）
      * ② 提取成功 → 同步 fallbackSn = max(当前值, 真实 seg_id)，防止自增序号和真实序号冲突
      * ③ 提取失败 → fallbackSn.incrementAndGet() 自增生成一个，保证 TreeMap 的 key 永不为空
@@ -389,7 +389,7 @@ public class XunfeiAudioService {
     }
 
     /**
-     * 【面试重点】基于 pgs 的分段合并策略。pgs 是讯飞 AST 的增量修正模式标识：
+     * 基于 pgs 的分段合并策略。pgs 是讯飞 AST 的增量修正模式标识：
      * - rpl（replace）：按 rg [start, end] 范围删除旧分段，再插入新分段（修正早期识别）
      * - apd（append）：追加一个新分段，不清除旧分段
      * - 其他/为空：退化到 upsert
@@ -423,7 +423,7 @@ public class XunfeiAudioService {
     }
 
     /**
-     * 【面试重点】无 pgs 时的 bg/ed 字节位置去重 —— 比 pgs 模式更复杂。
+     * 无 pgs 时的 bg/ed 字节位置去重 —— 比 pgs 模式更复杂。
      * 四个分支按优先级执行：
      * ① bg/ed 完全匹配 + 新文本仅标点 → 标点追加到旧文本末尾，不做替换
      * ② 找到 bg/ed 重叠且文本相似的旧分段 → 复用（更新文本和 range）
@@ -704,15 +704,6 @@ public class XunfeiAudioService {
         return result.toString();
     }
 
-    /**
-     * 【面试重点】消费者端：从 Pipe 读端持续读取音频，按讯飞 AST 协议推流。
-     *
-     * - 每次读 1280 字节（AST 协议块大小）
-     * - 每发一块 sleep(40ms)，模拟实时推流节奏（不是越快越好，AST 期望近似实时的速率）
-     * - 读完 EOF 后发 {"end":true} 告知讯飞音频结束
-     * - 这里读的是 Pipe 的 InputStream，不是前端 WebSocket Session
-     * - 如果 Pipe 写端被 stopTranscriptionSession 关闭，这里会收到 IOException → future 完成 → onFailure 收尾
-     */
     private void sendAudioStream(WebSocket webSocket,
                                  InputStream audioInputStream,
                                  String sessionId,
@@ -839,7 +830,7 @@ public class XunfeiAudioService {
     }
 
     /**
-     * 【面试重点】AST 增量装配器 —— ASR 算法的核心。
+     * AST 增量装配器 —— ASR 算法的核心。
      *
      * 维护一个 TreeMap<Integer, SegmentState> 有序分段池，key 是 seg_id，按自然序排列。
      * 讯飞 AST 返回的每个增量包经过这里做合并，而不是直接原始追加。
@@ -994,7 +985,7 @@ public class XunfeiAudioService {
     }
 
     /**
-     * 【面试重点】转写增量更新 —— 后端三层适配的产出物。
+     * 转写增量更新 —— 后端三层适配的产出物。
      *
      * 三级文本（解决结果抖动）：
      * - fullText: 全量快照

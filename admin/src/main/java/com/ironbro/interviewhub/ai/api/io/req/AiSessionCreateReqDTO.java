@@ -1,13 +1,24 @@
 package com.ironbro.interviewhub.ai.api.io.req;
 
 import lombok.Data;
-
 /**
  * AI会话创建请求DTO
  */
 @Data
 public class AiSessionCreateReqDTO {
-
+    
+    /**
+     * 用户名
+     */
+    private String userName;
+    
+    /**
+     * AI配置ID
+     */
     private Long aiId;
+    
+    /**
+     * 第一条消息
+     */
     private String firstMessage;
 }

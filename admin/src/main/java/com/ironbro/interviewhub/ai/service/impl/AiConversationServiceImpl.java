@@ -16,6 +16,7 @@ import com.ironbro.interviewhub.ai.service.AiPropertiesService;
 import com.ironbro.interviewhub.common.convention.exception.ClientException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.Date;
@@ -67,7 +68,7 @@ public class AiConversationServiceImpl implements AiConversationService {
 
     @Override
     public IPage<AiConversationRespDTO> pageConversations(String username, AiConversationPageReqDTO requestParam) {
-        PageRequest pageable = PageRequest.of(requestParam.getCurrent() - 1, requestParam.getSize());
+        Pageable pageable = PageRequest.of(requestParam.getCurrent() - 1, requestParam.getSize());
         org.springframework.data.domain.Page<AiConversation> conversationPage;
 
         if (requestParam.getAiId() != null) {
@@ -123,9 +124,11 @@ public class AiConversationServiceImpl implements AiConversationService {
 
     @Override
     public void endConversation(String sessionId) {
-        AiConversation conversation = aiConversationRepository
-                .findBySessionIdAndDelFlag(sessionId, 0)
-                .orElseThrow(() -> new ClientException("会话不存在"));
+        Optional<AiConversation> conversationOpt = aiConversationRepository.findBySessionIdAndDelFlag(sessionId, 0);
+        if (conversationOpt.isEmpty()) {
+            throw new ClientException("Conversation does not exist");
+        }
+        AiConversation conversation = conversationOpt.get();
         conversation.setStatus(2);
         conversation.setUpdateTime(new Date());
         aiConversationRepository.save(conversation);
@@ -139,9 +142,11 @@ public class AiConversationServiceImpl implements AiConversationService {
 
     @Override
     public void deleteConversation(String sessionId) {
-        AiConversation conversation = aiConversationRepository
-                .findBySessionIdAndDelFlag(sessionId, 0)
-                .orElseThrow(() -> new ClientException("会话不存在"));
+        Optional<AiConversation> conversationOpt = aiConversationRepository.findBySessionIdAndDelFlag(sessionId, 0);
+        if (conversationOpt.isEmpty()) {
+            throw new ClientException("Conversation does not exist");
+        }
+        AiConversation conversation = conversationOpt.get();
         conversation.setDelFlag(1);
         conversation.setUpdateTime(new Date());
         aiConversationRepository.save(conversation);
@@ -155,9 +160,11 @@ public class AiConversationServiceImpl implements AiConversationService {
 
     @Override
     public AiConversationRespDTO getConversationBySessionId(String sessionId) {
-        AiConversation conversation = aiConversationRepository
-                .findBySessionIdAndDelFlag(sessionId, 0)
-                .orElseThrow(() -> new ClientException("会话不存在"));
+        Optional<AiConversation> conversationOpt = aiConversationRepository.findBySessionIdAndDelFlag(sessionId, 0);
+        if (conversationOpt.isEmpty()) {
+            throw new ClientException("Conversation does not exist");
+        }
+        AiConversation conversation = conversationOpt.get();
         AiConversationRespDTO respDTO = new AiConversationRespDTO();
         BeanUtil.copyProperties(conversation, respDTO);
         AiPropertiesDO aiProperties = aiPropertiesService.getById(conversation.getAiId());
@@ -176,23 +183,23 @@ public class AiConversationServiceImpl implements AiConversationService {
     @Override
     public void requireOwnedConversation(String sessionId, String username) {
         if (StrUtil.isBlank(sessionId)) {
-            throw new ClientException("sessionId不能为空");
+            throw new ClientException("sessionId cannot be empty");
         }
         if (StrUtil.isBlank(username)) {
-            throw new ClientException("username不能为空");
+            throw new ClientException("username cannot be empty");
         }
         AiConversation conversation = aiConversationRepository
                 .findBySessionIdAndDelFlag(sessionId, 0)
-                .orElseThrow(() -> new ClientException("会话不存在"));
+                .orElseThrow(() -> new ClientException("Conversation does not exist"));
         if (!username.equals(conversation.getUsername())) {
-            throw new ClientException("无权访问此会话");
+            throw new ClientException("No permission to access this conversation");
         }
     }
 
     @Override
     public List<String> listOwnedSessionIds(String username) {
         if (StrUtil.isBlank(username)) {
-            throw new ClientException("username不能为空");
+            throw new ClientException("username cannot be empty");
         }
         return aiConversationRepository.findByUsernameAndDelFlagOrderByCreateTimeDesc(username, 0)
                 .stream()

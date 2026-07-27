@@ -3,9 +3,6 @@ package com.ironbro.interviewhub.agent.application;
 import java.util.Arrays;
 import java.util.List;
 
-/**
- * 业务场景枚举，定义面试系统中所有需要调用 AI Agent 的场景。
- */
 public enum BusinessAgentScene {
 
     GENERAL_AGENT_CHAT("general-agent-chat", "通用智能体"),
@@ -21,13 +18,25 @@ public enum BusinessAgentScene {
     BusinessAgentScene(String code, String defaultAgentName, String... aliasAgentNames) {
         this.code = code;
         this.defaultAgentName = defaultAgentName;
+        this.candidateAgentNames = Arrays.asList(buildCandidateNames(defaultAgentName, aliasAgentNames));
+    }
+
+    public String getCode() {
+        return code;
+    }
+
+    public String getDefaultAgentName() {
+        return defaultAgentName;
+    }
+
+    public List<String> getCandidateAgentNames() {
+        return candidateAgentNames;
+    }
+
+    private static String[] buildCandidateNames(String defaultAgentName, String... aliasAgentNames) {
         String[] names = new String[aliasAgentNames.length + 1];
         names[0] = defaultAgentName;
         System.arraycopy(aliasAgentNames, 0, names, 1, aliasAgentNames.length);
-        this.candidateAgentNames = Arrays.asList(names);
+        return names;
     }
-
-    public String getCode() { return code; }
-    public String getDefaultAgentName() { return defaultAgentName; }
-    public List<String> getCandidateAgentNames() { return candidateAgentNames; }
 }

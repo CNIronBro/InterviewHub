@@ -1,5 +1,7 @@
 package com.ironbro.interviewhub.user.api.io.resp;
 
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.ironbro.interviewhub.common.serialize.PhoneDesensitizationSerializer;
 import lombok.Data;
 
 /**
@@ -26,6 +28,7 @@ public class UserRespDTO {
     /**
      * 手机号
      */
+    @JsonSerialize(using = PhoneDesensitizationSerializer.class)
     private String phone;
 
     /**

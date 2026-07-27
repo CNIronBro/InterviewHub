@@ -52,18 +52,33 @@ public class SaTokenWebSocketAuthService implements WebSocketAuthService {
         }
 
         String token = extractFirstParam(requestParams, "token");
-        if (token == null) token = extractFirstParam(requestParams, "Authorization");
-        if (token == null) token = extractFirstParam(requestParams, "satoken");
-        if (token == null) return null;
-
+        if (token == null) {
+            token = extractFirstParam(requestParams, "Authorization");
+        }
+        if (token == null) {
+            token = extractFirstParam(requestParams, "authorization");
+        }
+        if (token == null) {
+            token = extractFirstParam(requestParams, "access_token");
+        }
+        if (token == null) {
+            token = extractFirstParam(requestParams, "satoken");
+        }
+        if (token == null) {
+            return null;
+        }
         return normalizeToken(token);
     }
 
     private String extractFirstParam(Map<String, List<String>> requestParams, String name) {
         List<String> values = requestParams.get(name);
-        if (values == null || values.isEmpty()) return null;
+        if (values == null || values.isEmpty()) {
+            return null;
+        }
         String value = values.get(0);
-        if (value == null || value.isBlank()) return null;
+        if (value == null || value.isBlank()) {
+            return null;
+        }
         return value;
     }
 

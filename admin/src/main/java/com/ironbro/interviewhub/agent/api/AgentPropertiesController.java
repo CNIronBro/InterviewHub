@@ -6,7 +6,6 @@ import com.ironbro.interviewhub.agent.service.AgentPropertiesService;
 import com.ironbro.interviewhub.common.convention.result.PageInfo;
 import com.ironbro.interviewhub.common.convention.result.Result;
 import com.ironbro.interviewhub.common.convention.result.Results;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,7 +15,7 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/v1/agent-properties")
+@RequestMapping("/api/xunzhi/v1/agent-properties")
 public class AgentPropertiesController {
 
     private final AgentPropertiesService agentPropertiesService;
@@ -25,7 +24,7 @@ public class AgentPropertiesController {
      * 创建 Agent 配置
      */
     @PostMapping
-    public Result<Void> create(@Valid @RequestBody AgentPropertiesReqDTO requestParam) {
+    public Result<Void> create(@RequestBody AgentPropertiesReqDTO requestParam) {
         agentPropertiesService.create(requestParam);
         return Results.success();
     }
@@ -43,7 +42,7 @@ public class AgentPropertiesController {
      * 更新 Agent 配置
      */
     @PutMapping
-    public Result<Void> update(@Valid @RequestBody AgentPropertiesReqDTO requestParam) {
+    public Result<Void> update(@RequestBody AgentPropertiesReqDTO requestParam) {
         agentPropertiesService.update(requestParam);
         return Results.success();
     }

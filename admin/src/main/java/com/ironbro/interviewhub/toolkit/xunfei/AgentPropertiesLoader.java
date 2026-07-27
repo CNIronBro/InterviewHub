@@ -1,5 +1,6 @@
 package com.ironbro.interviewhub.toolkit.xunfei;
 
+import com.ironbro.interviewhub.agent.api.io.resp.AgentPropertiesRespDTO;
 import com.ironbro.interviewhub.agent.dao.entity.AgentPropertiesDO;
 import com.ironbro.interviewhub.agent.service.AgentPropertiesService;
 import lombok.Getter;
@@ -60,9 +61,11 @@ public class AgentPropertiesLoader implements CommandLineRunner {
                 return cached;
             }
         }
-        com.ironbro.interviewhub.agent.api.io.resp.AgentPropertiesRespDTO latest =
-                agentPropertiesService.getByName(agentName);
-        if (latest == null || latest.getId() == null) return null;
+
+        AgentPropertiesRespDTO latest = agentPropertiesService.getByName(agentName);
+        if (latest == null || latest.getId() == null) {
+            return null;
+        }
         return getByAgentId(latest.getId());
     }
 }

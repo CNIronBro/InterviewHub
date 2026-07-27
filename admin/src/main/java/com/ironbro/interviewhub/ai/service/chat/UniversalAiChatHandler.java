@@ -56,8 +56,7 @@ public class UniversalAiChatHandler implements AiChatHandler {
     }
 
     @Override
-    public void streamToSink(AiPropertiesDO aiProperties, String userMessage,
-                             List<AiMessageHistoryRespDTO> historyMessages,
+    public void streamToSink(AiPropertiesDO aiProperties, String userMessage, List<AiMessageHistoryRespDTO> historyMessages,
                              FluxSink<String> sink, AIContentAccumulator accumulator) throws Exception {
         ChatClient chatClient = createChatClient(aiProperties);
         List<Message> messages = buildMessages(aiProperties, userMessage, historyMessages);
@@ -77,16 +76,16 @@ public class UniversalAiChatHandler implements AiChatHandler {
                                     String content = generation.getOutput().getText();
                                     if (StrUtil.isNotEmpty(content)) {
                                         AiChatStreamRespDTO resp = AiChatStreamRespDTO.builder()
-                                                .type("content").content(content).build();
+                                                .type("content")
+                                                .content(content)
+                                                .build();
                                         sink.next(JSON.toJSONString(resp));
                                         accumulator.appendSimpleContent(content);
                                     }
 
-                                    // 先用反射获取 reasoning_content，再 fallback 到 metadata
                                     String reasoning = null;
                                     try {
-                                        java.lang.reflect.Method getReasoningContent =
-                                                generation.getOutput().getClass().getMethod("getReasoningContent");
+                                        java.lang.reflect.Method getReasoningContent = generation.getOutput().getClass().getMethod("getReasoningContent");
                                         Object reasoningVal = getReasoningContent.invoke(generation.getOutput());
                                         if (reasoningVal != null) {
                                             reasoning = reasoningVal.toString();
@@ -95,8 +94,7 @@ public class UniversalAiChatHandler implements AiChatHandler {
                                     }
 
                                     if (reasoning == null) {
-                                        Object reasoningObj = generation.getOutput().getMetadata()
-                                                .get("reasoningContent");
+                                        Object reasoningObj = generation.getOutput().getMetadata().get("reasoningContent");
                                         if (reasoningObj != null) {
                                             reasoning = reasoningObj.toString();
                                         }
@@ -104,7 +102,9 @@ public class UniversalAiChatHandler implements AiChatHandler {
 
                                     if (StrUtil.isNotEmpty(reasoning)) {
                                         AiChatStreamRespDTO resp = AiChatStreamRespDTO.builder()
-                                                .type("reasoning_content").content(reasoning).build();
+                                                .type("reasoning_content")
+                                                .content(reasoning)
+                                                .build();
                                         sink.next(JSON.toJSONString(resp));
                                         accumulator.appendReasoningChunk(reasoning.getBytes());
                                     }
@@ -128,6 +128,7 @@ public class UniversalAiChatHandler implements AiChatHandler {
         if (!latch.await(5, TimeUnit.MINUTES)) {
             throw new RuntimeException("AI 响应超时");
         }
+
         if (streamError[0] != null) {
             throw new RuntimeException(streamError[0]);
         }
@@ -154,18 +155,21 @@ public class UniversalAiChatHandler implements AiChatHandler {
                     }
                 });
 
-        // DeepSeek 专用路径
         if (AiPropritiesType.DEEPSEEK.getType().equalsIgnoreCase(aiProperties.getAiType())) {
             DeepSeekApi deepSeekApi = new DeepSeekApi(
-                    baseUrl, new SimpleApiKey(apiKey),
+                    baseUrl,
+                    new SimpleApiKey(apiKey),
                     new LinkedMultiValueMap<>(),
-                    "/chat/completions", "/beta",
-                    restClientBuilder, WebClient.builder(),
+                    "/chat/completions",
+                    "/beta",
+                    restClientBuilder,
+                    WebClient.builder(),
                     new DefaultResponseErrorHandler()
             );
 
             DeepSeekChatOptions.Builder optionsBuilder = DeepSeekChatOptions.builder()
                     .model(aiProperties.getModelName());
+
             if (aiProperties.getMaxTokens() != null) {
                 optionsBuilder.maxTokens(aiProperties.getMaxTokens());
             }
@@ -174,23 +178,31 @@ public class UniversalAiChatHandler implements AiChatHandler {
             ToolCallingManager toolCallingManager = ToolCallingManager.builder().build();
 
             DeepSeekChatModel chatModel = new DeepSeekChatModel(
-                    deepSeekApi, options, toolCallingManager,
-                    RetryTemplate.defaultInstance(), ObservationRegistry.NOOP
+                    deepSeekApi,
+                    options,
+                    toolCallingManager,
+                    RetryTemplate.defaultInstance(),
+                    ObservationRegistry.NOOP
             );
-            return ChatClient.builder(chatModel).defaultOptions(options).build();
+            return ChatClient.builder(chatModel)
+                    .defaultOptions(options)
+                    .build();
         }
 
-        // OpenAI 兼容路径
         OpenAiApi openAiApi = new OpenAiApi(
-                baseUrl, new SimpleApiKey(apiKey),
+                baseUrl,
+                new SimpleApiKey(apiKey),
                 new LinkedMultiValueMap<>(),
-                "/chat/completions", "/embeddings",
-                restClientBuilder, WebClient.builder(),
+                "/chat/completions",
+                "/embeddings",
+                restClientBuilder,
+                WebClient.builder(),
                 new DefaultResponseErrorHandler()
         );
 
         OpenAiChatOptions.Builder optionsBuilder = OpenAiChatOptions.builder()
                 .model(aiProperties.getModelName());
+
         if (aiProperties.getMaxTokens() != null) {
             optionsBuilder.maxTokens(aiProperties.getMaxTokens());
         }
@@ -199,15 +211,19 @@ public class UniversalAiChatHandler implements AiChatHandler {
         ToolCallingManager toolCallingManager = ToolCallingManager.builder().build();
 
         OpenAiChatModel chatModel = new OpenAiChatModel(
-                openAiApi, options, toolCallingManager,
-                RetryTemplate.defaultInstance(), ObservationRegistry.NOOP
+                openAiApi,
+                options,
+                toolCallingManager,
+                RetryTemplate.defaultInstance(),
+                ObservationRegistry.NOOP
         );
 
-        return ChatClient.builder(chatModel).defaultOptions(options).build();
+        return ChatClient.builder(chatModel)
+                .defaultOptions(options)
+                .build();
     }
 
-    private List<Message> buildMessages(AiPropertiesDO aiProperties, String userMessage,
-                                        List<AiMessageHistoryRespDTO> historyMessages) {
+    private List<Message> buildMessages(AiPropertiesDO aiProperties, String userMessage, List<AiMessageHistoryRespDTO> historyMessages) {
         List<Message> messages = new ArrayList<>();
 
         if (StrUtil.isNotBlank(aiProperties.getSystemPrompt())) {

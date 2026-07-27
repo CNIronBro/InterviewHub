@@ -117,7 +117,7 @@ public class FlightCoordinatorRepository {
     private final StringRedisTemplate stringRedisTemplate;
 
     /**
-     * 【面试重点】分布式 Single-flight 的核心入口：通过 Redis Lua 脚本原子判断当前节点的角色。
+     * 分布式 Single-flight 的核心入口：通过 Redis Lua 脚本原子判断当前节点的角色。
      *
      * Lua 脚本逻辑：
      *   1. meta 不存在 → OWNER_NEW（我是第一个，我来跑）

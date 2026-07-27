@@ -6,14 +6,20 @@ import cn.hutool.core.lang.UUID;
 import cn.hutool.core.util.StrUtil;
 import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ironbro.interviewhub.common.convention.exception.ClientException;
 import com.ironbro.interviewhub.common.convention.exception.ServiceException;
 import com.ironbro.interviewhub.common.enums.UserErrorCodeEnum;
 import com.ironbro.interviewhub.user.api.io.req.UserLoginReqDTO;
+import com.ironbro.interviewhub.user.api.io.req.UserPageReqDTO;
 import com.ironbro.interviewhub.user.api.io.req.UserRegisterReqDTO;
+import com.ironbro.interviewhub.user.api.io.req.UserUpdateReqDTO;
 import com.ironbro.interviewhub.user.api.io.resp.UserLoginRespDTO;
+import com.ironbro.interviewhub.user.api.io.resp.UserPageRespDTO;
 import com.ironbro.interviewhub.user.api.io.resp.UserRespDTO;
 import com.ironbro.interviewhub.user.dao.entity.UserDO;
 import com.ironbro.interviewhub.user.dao.mapper.UserMapper;
@@ -85,6 +91,24 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserDO> implements 
     }
 
     @Override
+    public void update(UserUpdateReqDTO requestParam, String currentUsername) {
+        if (requestParam == null) {
+            throw new ClientException("request body cannot be empty");
+        }
+        if (StrUtil.isBlank(currentUsername)) {
+            throw new ClientException("current user is not logged in");
+        }
+        if (StrUtil.isNotBlank(requestParam.getUsername()) && !currentUsername.equals(requestParam.getUsername())) {
+            throw new ClientException("no permission to update other users");
+        }
+
+        requestParam.setUsername(currentUsername);
+        LambdaUpdateWrapper<UserDO> updateWrapper = Wrappers.lambdaUpdate(UserDO.class)
+                .eq(UserDO::getUsername, currentUsername);
+        baseMapper.update(BeanUtil.toBean(requestParam, UserDO.class), updateWrapper);
+    }
+
+    @Override
     public UserLoginRespDTO login(UserLoginReqDTO requestParam) {
         LambdaQueryWrapper<UserDO> queryWrapper = Wrappers.lambdaQuery(UserDO.class)
                 .eq(UserDO::getUsername, requestParam.getUsername())
@@ -123,6 +147,50 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, UserDO> implements 
             stringRedisTemplate.delete(USER_LOGIN_KEY + username);
             return;
         }
-        throw new ClientException("用户Token不存在或未登录");
+        throw new ClientException("user token does not exist or user is not logged in");
+    }
+
+    @Override
+    public IPage<UserPageRespDTO> pageUsers(UserPageReqDTO requestParam) {
+        Page<UserDO> page = new Page<>(requestParam.getCurrent(), requestParam.getSize());
+
+        LambdaQueryWrapper<UserDO> queryWrapper = Wrappers.lambdaQuery(UserDO.class)
+                .eq(UserDO::getDelFlag, 0);
+
+        if (requestParam.getKeyword() != null && !requestParam.getKeyword().trim().isEmpty()) {
+            String keyword = requestParam.getKeyword().trim();
+            queryWrapper.and(wrapper -> wrapper
+                    .like(UserDO::getUsername, keyword)
+                    .or().like(UserDO::getRealName, keyword)
+                    .or().like(UserDO::getMail, keyword)
+            );
+        }
+
+        if (requestParam.getCreateTimeSort() != null) {
+            if ("asc".equalsIgnoreCase(requestParam.getCreateTimeSort())) {
+                queryWrapper.orderByAsc(UserDO::getCreateTime);
+            } else {
+                queryWrapper.orderByDesc(UserDO::getCreateTime);
+            }
+        } else {
+            queryWrapper.orderByDesc(UserDO::getCreateTime);
+        }
+
+        IPage<UserDO> userPage = baseMapper.selectPage(page, queryWrapper);
+
+        Page<UserPageRespDTO> resultPage = new Page<>(requestParam.getCurrent(), requestParam.getSize());
+        resultPage.setTotal(userPage.getTotal());
+
+        if (CollUtil.isNotEmpty(userPage.getRecords())) {
+            resultPage.setRecords(userPage.getRecords().stream()
+                    .map(userDO -> {
+                        UserPageRespDTO respDTO = new UserPageRespDTO();
+                        BeanUtils.copyProperties(userDO, respDTO);
+                        return respDTO;
+                    })
+                    .toList());
+        }
+
+        return resultPage;
     }
 }

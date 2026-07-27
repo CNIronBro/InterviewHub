@@ -16,7 +16,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/v1/agents/files")
+@RequestMapping("/api/xunzhi/v1/agents/files")
 public class AgentFileController {
 
     private final AgentFileAssetService agentFileAssetService;

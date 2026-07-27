@@ -1,7 +1,7 @@
 package com.ironbro.interviewhub.ai.api.io.req;
 
-import com.ironbro.interviewhub.ai.dao.entity.AiPropertiesDO;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.ironbro.interviewhub.ai.dao.entity.AiPropertiesDO;
 import lombok.Data;
 
 /**
