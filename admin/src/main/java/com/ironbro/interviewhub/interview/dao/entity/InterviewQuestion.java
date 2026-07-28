@@ -51,6 +51,17 @@ public class InterviewQuestion {
     private String questionsJson;
 
     /**
+     * Question scoring anchors serialized as JSON and keyed by question number.
+     * Format: {"1": [{...}], "2": [{...}]}
+     */
+    private String questionAnchorsJson;
+
+    /**
+     * Application-managed rubric version. Version 0 denotes the legacy rubric.
+     */
+    private Integer rubricVersion;
+
+    /**
      * 建议列表（保留用于向后兼容）
      */
     private List<String> suggestions;

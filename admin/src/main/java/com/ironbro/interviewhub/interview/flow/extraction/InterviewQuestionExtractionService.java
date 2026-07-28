@@ -14,6 +14,8 @@ import com.ironbro.interviewhub.interview.shared.InterviewAiInvoker;
 import com.ironbro.interviewhub.interview.shared.InterviewResponseParser;
 import com.ironbro.interviewhub.interview.service.InterviewQuestionCacheService;
 import com.ironbro.interviewhub.interview.service.InterviewQuestionService;
+import com.ironbro.interviewhub.interview.service.QuestionSpecParser;
+import com.ironbro.interviewhub.interview.service.model.QuestionSpecParseResult;
 import com.ironbro.interviewhub.toolkit.xunfei.XingChenAIClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -51,6 +53,7 @@ public class InterviewQuestionExtractionService {
     private final InterviewQuestionCacheService interviewQuestionCacheService;
     // AI 响应解析器：从大模型返回的 JSON 中提取结构化字段
     private final InterviewResponseParser interviewResponseParser;
+    private final QuestionSpecParser questionSpecParser;
 
     /**
      * 上传简历 → AI 解析 → 提取面试题 → 落库 + 缓存。
@@ -246,7 +249,9 @@ public class InterviewQuestionExtractionService {
                 interviewQuestionCacheService.cacheResumeContext(reqDTO.getSessionId(), resumeContext);
             }
 
-            List<String> questions = normalizeStringList(responseMap.get("questions"));
+            QuestionSpecParseResult questionSpecs =
+                    questionSpecParser.parseQuestions(responseMap.get("questions"));
+            List<String> questions = questionSpecs.getQuestions();
             if (questions.isEmpty()) {
                 String smallTalk = interviewResponseParser.asString(responseMap.get("smallTalk"));
                 response.setErrorMessage(StrUtil.isNotBlank(smallTalk)
@@ -258,6 +263,8 @@ public class InterviewQuestionExtractionService {
             }
 
             interviewQuestionCacheService.cacheInterviewQuestions(reqDTO.getSessionId(), questions);
+            interviewQuestionCacheService.cacheQuestionAnchors(
+                    reqDTO.getSessionId(), questionSpecs.getAnchorsByQuestionNumber());
             Map<String, String> questionMap =
                     interviewQuestionCacheService.getSessionInterviewQuestions(reqDTO.getSessionId());
             response.setQuestions(questionMap);
@@ -302,7 +309,15 @@ public class InterviewQuestionExtractionService {
             }
 
             // 结构化二次落库用于 Redis 丢失后的恢复来源，避免报告阶段出现字段缺失。
-            persistStructuredFields(reqDTO, questions, suggestions, resumeScore, interviewType, resumeContext);
+            persistStructuredFields(
+                    reqDTO,
+                    questions,
+                    suggestions,
+                    resumeScore,
+                    interviewType,
+                    resumeContext,
+                    questionSpecs.getAnchorsByQuestionNumber(),
+                    questionSpecs.getRubricVersion());
             interviewQuestionCacheService.resetSessionScore(reqDTO.getSessionId());
             log.info("Session score reset, sessionId={}", reqDTO.getSessionId());
             return true;
@@ -373,7 +388,9 @@ public class InterviewQuestionExtractionService {
             List<String> suggestions,
             Integer resumeScore,
             String interviewType,
-            Map<String, Object> resumeContext) {
+            Map<String, Object> resumeContext,
+            Map<String, String> anchorsByQuestionNumber,
+            Integer rubricVersion) {
         try {
             interviewQuestionService.upsertStructuredExtraction(
                     reqDTO.getSessionId(),
@@ -384,7 +401,9 @@ public class InterviewQuestionExtractionService {
                     suggestions,
                     resumeScore,
                     interviewType,
-                    resumeContext
+                    resumeContext,
+                    anchorsByQuestionNumber,
+                    rubricVersion
             );
         } catch (Exception ex) {
             log.warn("Failed to persist structured extraction fields, sessionId={}, error={}",

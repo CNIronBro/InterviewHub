@@ -71,5 +71,7 @@ public interface InterviewQuestionService {
             List<String> suggestions,
             Integer resumeScore,
             String interviewType,
-            Map<String, Object> resumeContext);
+            Map<String, Object> resumeContext,
+            Map<String, String> anchorsByQuestionNumber,
+            Integer rubricVersion);
 }

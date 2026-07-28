@@ -47,6 +47,20 @@ public interface InterviewQuestionCacheService {
      * @return 题号和题目的映射
      */
     Map<String, String> getSessionInterviewQuestions(String sessionId);
+
+    /**
+     * Cache serialized question anchors by question number.
+     * @param sessionId session id
+     * @param anchorsByQuestionNumber question number to anchors JSON
+     */
+    void cacheQuestionAnchors(String sessionId, Map<String, String> anchorsByQuestionNumber);
+
+    /**
+     * Get serialized question anchors by question number.
+     * @param sessionId session id
+     * @return question number to anchors JSON, or an empty map when absent
+     */
+    Map<String, String> getSessionQuestionAnchors(String sessionId);
     
     /**
      * 获取会话的面试建议

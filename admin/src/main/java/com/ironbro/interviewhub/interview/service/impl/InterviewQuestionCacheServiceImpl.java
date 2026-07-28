@@ -44,6 +44,8 @@ public class InterviewQuestionCacheServiceImpl implements InterviewQuestionCache
      * 面试题缓存键前缀。
      */
     private static final String INTERVIEW_QUESTIONS_KEY = "interview:questions:session:";
+
+    private static final String INTERVIEW_QUESTION_ANCHORS_KEY = "interview:question_anchors:session:";
     
     /**
      * 面试建议缓存键前缀。
@@ -237,6 +239,56 @@ public class InterviewQuestionCacheServiceImpl implements InterviewQuestionCache
             log.error("Interview cache service message", sessionId, e.getMessage(), e);
             return new HashMap<>();
         }
+    }
+
+    @Override
+    public void cacheQuestionAnchors(String sessionId, Map<String, String> anchorsByQuestionNumber) {
+        String cacheKey = INTERVIEW_QUESTION_ANCHORS_KEY + sessionId;
+        try {
+            stringRedisTemplate.delete(cacheKey);
+            if (anchorsByQuestionNumber == null || anchorsByQuestionNumber.isEmpty()) {
+                return;
+            }
+
+            Map<String, String> normalized = new LinkedHashMap<>();
+            anchorsByQuestionNumber.forEach((questionNumber, anchorsJson) -> {
+                if (StrUtil.isNotBlank(questionNumber) && StrUtil.isNotBlank(anchorsJson)) {
+                    normalized.put(questionNumber.trim(), anchorsJson);
+                }
+            });
+            if (!normalized.isEmpty()) {
+                stringRedisTemplate.opsForHash().putAll(cacheKey, normalized);
+                stringRedisTemplate.expire(cacheKey, CACHE_EXPIRE_HOURS, TimeUnit.HOURS);
+            }
+            log.info("Cached question anchors, sessionId: {}, count: {}", sessionId, normalized.size());
+        } catch (Exception e) {
+            log.error("Failed to cache question anchors, sessionId: {}", sessionId, e);
+        }
+    }
+
+    @Override
+    public Map<String, String> getSessionQuestionAnchors(String sessionId) {
+        try {
+            String cacheKey = INTERVIEW_QUESTION_ANCHORS_KEY + sessionId;
+            Map<Object, Object> rawMap = stringRedisTemplate.opsForHash().entries(cacheKey);
+            Map<String, String> result = new LinkedHashMap<>();
+            rawMap.entrySet().stream()
+                    .sorted((left, right) -> compareQuestionNumbers(
+                            left.getKey().toString(), right.getKey().toString()))
+                    .forEach(entry -> result.put(
+                            entry.getKey().toString(), entry.getValue().toString()));
+            return result;
+        } catch (Exception e) {
+            log.error("Failed to get question anchors, sessionId: {}", sessionId, e);
+            return Collections.emptyMap();
+        }
+    }
+
+    private int compareQuestionNumbers(String left, String right) {
+        if (left.matches("\\d+") && right.matches("\\d+")) {
+            return Integer.compare(Integer.parseInt(left), Integer.parseInt(right));
+        }
+        return left.compareTo(right);
     }
     
     @Override
