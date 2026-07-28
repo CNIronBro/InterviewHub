@@ -5,6 +5,9 @@ import com.alibaba.fastjson2.JSON;
 import com.ironbro.interviewhub.agent.dao.entity.AgentPropertiesDO;
 import com.ironbro.interviewhub.interview.application.guard.core.InterviewAiGuardException;
 import com.ironbro.interviewhub.interview.application.guard.core.InterviewAiGuardStage;
+import com.ironbro.interviewhub.interview.application.rule.aggregation.InterviewScoreAggregationContext;
+import com.ironbro.interviewhub.interview.application.rule.aggregation.InterviewScoreAggregationDecision;
+import com.ironbro.interviewhub.interview.application.rule.aggregation.InterviewScoreAggregationService;
 import com.ironbro.interviewhub.interview.shared.InterviewAiInvoker;
 import com.ironbro.interviewhub.interview.shared.InterviewResponseParser;
 import com.ironbro.interviewhub.interview.service.InterviewQuestionCacheService;
@@ -31,6 +34,13 @@ public class InterviewEvaluationService {
     private static final String KEY_FEEDBACK = "feedback";
     private static final String KEY_FOLLOW_UP_NEEDED = "follow_up_needed";
     private static final String KEY_FOLLOW_UP_QUESTION = "follow_up_question";
+    private static final String KEY_RULE_SCORE = "ruleScore";
+    private static final String KEY_ANCHOR_JUDGMENTS = "anchorJudgments";
+    private static final String KEY_CAPABILITY_LEVEL = "capabilityLevel";
+    private static final String KEY_GAPS = "gaps";
+    private static final String KEY_RULE_VERSION = "ruleVersion";
+    private static final String KEY_AGGREGATION_REASON_CODE = "aggregationReasonCode";
+    private static final String KEY_AGGREGATION_FALLBACK = "aggregationFallback";
 
     private static final String[] RESUME_SUMMARY_KEYS = new String[]{
             "resume_context",
@@ -46,6 +56,7 @@ public class InterviewEvaluationService {
     private final InterviewQuestionCacheService interviewQuestionCacheService;
     private final InterviewAiInvoker interviewAiInvoker;
     private final InterviewResponseParser interviewResponseParser;
+    private final InterviewScoreAggregationService interviewScoreAggregationService;
 
     /**
      * Evaluate current answer by scorer workflow and return normalized result fields.
@@ -107,7 +118,57 @@ public class InterviewEvaluationService {
         Map<String, Object> normalized = normalizeScorerResult(evaluationResult);
         inferFollowUpNeededIfMissing(normalized);
         ensureDefaultEvaluationFields(normalized);
+        applyRuleAggregation(normalized);
         return normalized;
+    }
+
+    private void applyRuleAggregation(Map<String, Object> normalizedResult) {
+        if (normalizedResult == null || normalizedResult.isEmpty()) {
+            return;
+        }
+
+        List<Map<String, Object>> anchors =
+                interviewResponseParser.parseAnchorResult(JSON.toJSONString(normalizedResult));
+        InterviewScoreAggregationContext context = new InterviewScoreAggregationContext();
+        context.setAnchors(anchors);
+        context.setRubricVersion(resolveRubricVersion(normalizedResult.get("rubricVersion")));
+
+        try {
+            InterviewScoreAggregationDecision decision =
+                    interviewScoreAggregationService.decide(context);
+            normalizedResult.put(KEY_ANCHOR_JUDGMENTS,
+                    anchors == null ? Collections.emptyList() : anchors);
+            normalizedResult.put(KEY_RULE_SCORE, decision.getRuleScore());
+            normalizedResult.put(KEY_CAPABILITY_LEVEL, decision.getCapabilityLevel());
+            normalizedResult.put(KEY_GAPS, decision.getGaps());
+            normalizedResult.put(KEY_RULE_VERSION, decision.getRuleVersion());
+            normalizedResult.put(KEY_AGGREGATION_REASON_CODE, decision.getReasonCode());
+            normalizedResult.put(KEY_AGGREGATION_FALLBACK, decision.isFallback());
+        } catch (Exception ex) {
+            log.warn("Rule score aggregation failed; legacy model score remains authoritative", ex);
+            normalizedResult.put(KEY_ANCHOR_JUDGMENTS,
+                    anchors == null ? Collections.emptyList() : anchors);
+            normalizedResult.put(KEY_RULE_SCORE, null);
+            normalizedResult.put(KEY_CAPABILITY_LEVEL, null);
+            normalizedResult.put(KEY_GAPS, Collections.emptyList());
+            normalizedResult.put(KEY_RULE_VERSION, null);
+            normalizedResult.put(KEY_AGGREGATION_REASON_CODE, "AGGREGATION_UNAVAILABLE");
+            normalizedResult.put(KEY_AGGREGATION_FALLBACK, true);
+        }
+    }
+
+    private Integer resolveRubricVersion(Object rawVersion) {
+        if (rawVersion instanceof Number) {
+            return ((Number) rawVersion).intValue();
+        }
+        if (rawVersion instanceof String && StrUtil.isNotBlank((String) rawVersion)) {
+            try {
+                return Integer.parseInt(((String) rawVersion).trim());
+            } catch (NumberFormatException ignored) {
+                return 0;
+            }
+        }
+        return 0;
     }
 
     private Map<String, Object> evaluateAnswerByScorerAgent(

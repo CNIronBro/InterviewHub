@@ -2,6 +2,7 @@ package com.ironbro.interviewhub.interview.flow.answer;
 
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.crypto.digest.DigestUtil;
+import com.alibaba.fastjson2.JSON;
 import com.ironbro.interviewhub.agent.application.BusinessAgentResolver;
 import com.ironbro.interviewhub.agent.application.BusinessAgentScene;
 import com.ironbro.interviewhub.agent.dao.entity.AgentPropertiesDO;
@@ -356,6 +357,10 @@ public class InterviewAnswerPipeline {
         ctx.followUpNeeded = interviewResponseParser.asBoolean(evaluationResult.get("follow_up_needed"));
         ctx.followUpQuestion = sanitizeFollowUpQuestion(interviewResponseParser.asString(evaluationResult.get("follow_up_question")));
         ctx.missingPoints = interviewResponseParser.asStringList(evaluationResult.get("missing_points"));
+        ctx.ruleScore = interviewResponseParser.parseScoreFromResponse(evaluationResult, "ruleScore");
+        ctx.anchorJudgments = interviewResponseParser.parseAnchorResult(
+                JSON.toJSONString(evaluationResult));
+        ctx.ruleVersion = interviewResponseParser.asString(evaluationResult.get("ruleVersion"));
 
         ctx.score = score;
         ctx.totalScore = interviewQuestionCacheService.getSessionTotalScore(ctx.sessionId);
@@ -552,6 +557,9 @@ public class InterviewAnswerPipeline {
                     .questionContent(ctx.currentQuestion)
                     .answerContent(truncateForLog(ctx.requestParam.getAnswerContent(), 1000))
                     .score(ctx.score)
+                    .ruleScore(ctx.ruleScore)
+                    .anchorJudgments(ctx.anchorJudgments)
+                    .ruleVersion(ctx.ruleVersion)
                     .totalScore(ctx.totalScore)
                     .feedback(ctx.response.getFeedback())
                     .followUpNeeded(ctx.followUpNeeded)
@@ -707,6 +715,9 @@ public class InterviewAnswerPipeline {
         private Integer currentFollowUpCount;
         private Integer maxFollowUp;
         private Integer score;
+        private Integer ruleScore;
+        private List<Map<String, Object>> anchorJudgments;
+        private String ruleVersion;
         private Integer totalScore;
         private Boolean followUpNeeded;
         private String followUpQuestion;
