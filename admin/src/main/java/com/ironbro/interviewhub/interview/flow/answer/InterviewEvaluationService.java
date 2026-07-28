@@ -154,7 +154,6 @@ public class InterviewEvaluationService {
             return null;
         }
     }
-
     private Map<String, Object> buildScorerWorkflowParameters(
             String answerContent,
             String questionContent,

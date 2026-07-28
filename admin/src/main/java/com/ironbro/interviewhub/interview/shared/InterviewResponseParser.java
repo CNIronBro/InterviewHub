@@ -28,6 +28,42 @@ public class InterviewResponseParser {
         return tryParseObject(aiResponseStr);
     }
 
+    /**
+     * Parses the "anchors" evidence list from a scorer workflow response.
+     * Returns null (never throws) when the field is missing or malformed, so callers can
+     * fall back to legacy score-only handling.
+     */
+    public List<Map<String, Object>> parseAnchorResult(String aiResponseStr) {
+        try {
+            Map<String, Object> matched = extractStructuredResult(aiResponseStr, "anchors");
+            if (matched == null) {
+                return null;
+            }
+            Object anchorsRaw = matched.get("anchors");
+            List<Object> anchorList = anchorsRaw instanceof List
+                    ? InterviewJsonValueNormalizer.asList(anchorsRaw)
+                    : null;
+            if (anchorList == null || anchorList.isEmpty()) {
+                return null;
+            }
+
+            List<Map<String, Object>> anchors = new java.util.ArrayList<>();
+            for (Object item : anchorList) {
+                Map<String, Object> anchorMap = item instanceof Map
+                        ? InterviewJsonValueNormalizer.asMap(item)
+                        : null;
+                if (anchorMap == null || StrUtil.isBlank(asString(anchorMap.get("anchorId")))) {
+                    continue;
+                }
+                anchors.add(anchorMap);
+            }
+            return anchors.isEmpty() ? null : anchors;
+        } catch (Exception ex) {
+            log.warn("Failed to parse anchor result: {}", ex.getMessage());
+            return null;
+        }
+    }
+
     public Map<String, Object> extractStructuredResult(String aiResponseStr, String... targetKeys) {
         Map<String, Object> parsed = parseEvaluationResult(aiResponseStr);
         Map<String, Object> matched = findFirstObjectContainingKeys(parsed, targetKeys);

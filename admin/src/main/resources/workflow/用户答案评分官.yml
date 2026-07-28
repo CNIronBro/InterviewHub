@@ -91,6 +91,14 @@ flowData:
             type: integer
             value: score
             fileType: ''
+          - originId: spark-llm::3d610bd9-1432-4746-96dc-384cafb89313
+            children: [
+              ]
+            id: a26c3ad2-ad7f-4845-a525-98fd43c089eb
+            label: anchors
+            type: array-object
+            value: anchors
+            fileType: ''
           label: ''
           value: ''
         label: 大模型_1
@@ -189,6 +197,19 @@ flowData:
             content:
               name: follow_up_question
               id: f64e121a-3869-4c59-a73d-a30fe7c0400f
+              nodeId: spark-llm::3d610bd9-1432-4746-96dc-384cafb89313
+            contentErrMsg: ''
+        fileType: ''
+      - id: fcb1bf8f-2237-41ff-a44f-48ee43c072b4
+        name: anchors
+        nameErrMsg: ''
+        schema:
+          type: array-object
+          value:
+            type: ref
+            content:
+              name: anchors
+              id: a26c3ad2-ad7f-4845-a525-98fd43c089eb
               nodeId: spark-llm::3d610bd9-1432-4746-96dc-384cafb89313
             contentErrMsg: ''
         fileType: ''
@@ -331,6 +352,26 @@ flowData:
           type: string
           default: ''
         required: false
+      - id: a26c3ad2-ad7f-4845-a525-98fd43c089eb
+        name: anchors
+        nameErrMsg: ''
+        schema:
+          type: array-object
+          properties:
+          - id: 4bffcb54-1d80-4a57-8a80-69810d10f81a
+            name: anchorId
+            type: string
+          - id: 11a210fc-37df-4d2b-97ff-ac2786fc76d9
+            name: status
+            type: string
+          - id: 814daab6-9404-44d7-b7d0-2b4484997531
+            name: evidence
+            type: string
+          - id: 63acdccb-81ff-4686-94f5-73c4e1082266
+            name: confidence
+            type: number
+          default: ''
+        required: false
       nodeParam:
         template: |
           题目：{{question}}
@@ -388,24 +429,31 @@ flowData:
             "missing_points": 数组类型（元素为字符串，无缺失则填空数组[]，禁止空字符串）,
             "feedback": 字符串类型（无反馈则填"无"，禁止空字符串）,
             "follow_up_needed": 布尔类型（true/false，必填，禁止空字符串/空值）,
-            "follow_up_question": 字符串类型（无跟进问题则填"无"，禁止空字符串）
+            "follow_up_question": 字符串类型（无跟进问题则填"无"，禁止空字符串）,
+            "anchors": 数组类型（元素为对象 {anchorId, status, evidence, confidence}，必填，禁止空数组）
           }
+
+          ## 锚点判定规则（新增字段，不改变上方 score 等字段的计算方式，二者独立输出）
+          1. anchors 数组必须且只能包含 correctness、completeness、logic、depth、clarity 五个锚点，每个各出现一次；
+          2. 每个锚点对象字段：anchorId（五个维度英文名之一）、status（met=充分满足/partial=部分满足/missing=未体现/contradicted=与正确认知矛盾）、evidence（引用或概括答案中支撑该判定的具体内容，无可引用内容则填"无相关表述"）、confidence（0-1之间的小数，表示该锚点判定的置信度）；
+          3. anchors 只做证据判定，不需要据此重新计算或修改 score/logic_ok/missing_points 等字段。
 
           ## 输出示例（可直接参考）
           示例1（有有效评分）：
-          {"score": 85, "logic_ok": true, "missing_points": ["未提及工程实现中的异常处理"], "feedback": "答案核心逻辑正确，但缺少异常处理相关内容，深度不足", "follow_up_needed": true, "follow_up_question": "请补充该场景下异常处理的具体方案"}
+          {"score": 85, "logic_ok": true, "missing_points": ["未提及工程实现中的异常处理"], "feedback": "答案核心逻辑正确，但缺少异常处理相关内容，深度不足", "follow_up_needed": true, "follow_up_question": "请补充该场景下异常处理的具体方案", "anchors": [{"anchorId": "correctness", "status": "met", "evidence": "答案对核心概念的描述准确", "confidence": 0.9}, {"anchorId": "completeness", "status": "partial", "evidence": "未提及异常处理", "confidence": 0.7}, {"anchorId": "logic", "status": "met", "evidence": "推导顺序清晰", "confidence": 0.85}, {"anchorId": "depth", "status": "partial", "evidence": "缺少工程权衡分析", "confidence": 0.6}, {"anchorId": "clarity", "status": "met", "evidence": "表达清晰易懂", "confidence": 0.9}]}
 
           示例2（无有效题目/答案）：
-          {"score": 0, "logic_ok": false, "missing_points": ["未提供需要评分的面试题目和答案"], "feedback": "缺少评分所需的核心内容，无法完成维度评估", "follow_up_needed": true, "follow_up_question": "请提供技术面试题目及对应的面试者答案文本"}
+          {"score": 0, "logic_ok": false, "missing_points": ["未提供需要评分的面试题目和答案"], "feedback": "缺少评分所需的核心内容，无法完成维度评估", "follow_up_needed": true, "follow_up_question": "请提供技术面试题目及对应的面试者答案文本", "anchors": [{"anchorId": "correctness", "status": "missing", "evidence": "无相关表述", "confidence": 0.95}, {"anchorId": "completeness", "status": "missing", "evidence": "无相关表述", "confidence": 0.95}, {"anchorId": "logic", "status": "missing", "evidence": "无相关表述", "confidence": 0.95}, {"anchorId": "depth", "status": "missing", "evidence": "无相关表述", "confidence": 0.95}, {"anchorId": "clarity", "status": "missing", "evidence": "无相关表述", "confidence": 0.95}]}
 
           示例3（答案完全错误）：
-          {"score": 15, "logic_ok": false, "missing_points": ["核心知识点理解错误", "逻辑推导完全偏离"], "feedback": "答案与正确解法完全不符，逻辑混乱", "follow_up_needed": false, "follow_up_question": "无"}
+          {"score": 15, "logic_ok": false, "missing_points": ["核心知识点理解错误", "逻辑推导完全偏离"], "feedback": "答案与正确解法完全不符，逻辑混乱", "follow_up_needed": false, "follow_up_question": "无", "anchors": [{"anchorId": "correctness", "status": "contradicted", "evidence": "核心结论与正确认知相反", "confidence": 0.9}, {"anchorId": "completeness", "status": "partial", "evidence": "提及部分要素但方向错误", "confidence": 0.6}, {"anchorId": "logic", "status": "contradicted", "evidence": "推导链条自相矛盾", "confidence": 0.85}, {"anchorId": "depth", "status": "missing", "evidence": "无相关表述", "confidence": 0.7}, {"anchorId": "clarity", "status": "met", "evidence": "表达本身清晰但内容错误", "confidence": 0.6}]}
 
           ## 强制校验项
           1. 所有字段必须符合指定类型，禁止将数字/布尔/数组类型字段赋值为空字符串；
           2. 无内容时：missing_points填空数组[]，feedback/follow_up_question填"无"，score填0，logic_ok/follow_up_needed填false；
           3. 输出的JSON必须可被标准JSON解析器解析，禁止单引号、未转义的特殊字符；
-          4. 禁止输出任何JSON以外的文本（包括解释、说明、寒暄等）。
+          4. 禁止输出任何JSON以外的文本（包括解释、说明、寒暄等）；
+          5. anchors 必须为长度恰好为5的数组，覆盖全部五个维度，禁止缺失、重复或空数组。
         respFormat: 2
       retryConfig:
         shouldRetry: false
