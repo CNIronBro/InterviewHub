@@ -8,16 +8,23 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Component
 @Slf4j
 public class InterviewResponseParser {
+
+    private static final Set<String> REQUIRED_ANCHOR_IDS = Set.of(
+            "correctness", "completeness", "logic", "depth", "clarity");
+    private static final Set<String> ALLOWED_ANCHOR_STATUSES = Set.of(
+            "met", "partial", "missing", "contradicted");
 
     public Map<String, Object> parseEvaluationResult(String aiResponseStr) {
         String contentStr = extractContentFromInterviewResponse(aiResponseStr);
@@ -43,25 +50,53 @@ public class InterviewResponseParser {
             List<Object> anchorList = anchorsRaw instanceof List
                     ? InterviewJsonValueNormalizer.asList(anchorsRaw)
                     : null;
-            if (anchorList == null || anchorList.isEmpty()) {
+            if (anchorList == null || anchorList.size() != REQUIRED_ANCHOR_IDS.size()) {
                 return null;
             }
 
             List<Map<String, Object>> anchors = new java.util.ArrayList<>();
+            Set<String> anchorIds = new HashSet<>();
             for (Object item : anchorList) {
                 Map<String, Object> anchorMap = item instanceof Map
                         ? InterviewJsonValueNormalizer.asMap(item)
                         : null;
-                if (anchorMap == null || StrUtil.isBlank(asString(anchorMap.get("anchorId")))) {
-                    continue;
+                if (!isValidAnchor(anchorMap, anchorIds)) {
+                    return null;
                 }
                 anchors.add(anchorMap);
             }
-            return anchors.isEmpty() ? null : anchors;
+            return anchorIds.equals(REQUIRED_ANCHOR_IDS) ? anchors : null;
         } catch (Exception ex) {
             log.warn("Failed to parse anchor result: {}", ex.getMessage());
             return null;
         }
+    }
+
+    private boolean isValidAnchor(Map<String, Object> anchor, Set<String> anchorIds) {
+        if (anchor == null) {
+            return false;
+        }
+
+        String anchorId = asString(anchor.get("anchorId"));
+        if (!REQUIRED_ANCHOR_IDS.contains(anchorId) || !anchorIds.add(anchorId)) {
+            return false;
+        }
+
+        String status = asString(anchor.get("status"));
+        if (!ALLOWED_ANCHOR_STATUSES.contains(status)) {
+            return false;
+        }
+
+        if (StrUtil.isBlank(asString(anchor.get("evidence")))) {
+            return false;
+        }
+
+        Object confidenceRaw = anchor.get("confidence");
+        if (!(confidenceRaw instanceof Number)) {
+            return false;
+        }
+        double confidence = ((Number) confidenceRaw).doubleValue();
+        return Double.isFinite(confidence) && confidence >= 0D && confidence <= 1D;
     }
 
     public Map<String, Object> extractStructuredResult(String aiResponseStr, String... targetKeys) {
