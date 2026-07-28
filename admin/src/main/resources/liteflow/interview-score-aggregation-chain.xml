@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<flow>
+    <chain name="score_aggregation_chain">
+        THEN(loadAnchorJudgments,
+        integrityGuard,
+        weightedScoreCalculate,
+        criticalErrorCap,
+        capabilityLevelFinalize);
+    </chain>
+</flow>
