@@ -62,6 +62,11 @@ public class InterviewQuestion {
     private Integer rubricVersion;
 
     /**
+     * Candidate profile returned by the independent resume profile workflow.
+     */
+    private String profileJson;
+
+    /**
      * 建议列表（保留用于向后兼容）
      */
     private List<String> suggestions;

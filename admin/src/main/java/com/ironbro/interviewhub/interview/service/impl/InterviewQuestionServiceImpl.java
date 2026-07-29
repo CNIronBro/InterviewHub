@@ -131,6 +131,35 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
     }
 
     @Override
+    public InterviewQuestion saveCandidateProfile(
+            String sessionId,
+            String userName,
+            Long agentId,
+            String resumeFileUrl,
+            String profileJson) {
+        if (StrUtil.isBlank(sessionId) || StrUtil.isBlank(profileJson)) {
+            return null;
+        }
+        InterviewQuestion question = getBySessionId(sessionId);
+        if (question == null) {
+            question = new InterviewQuestion();
+            question.setSessionId(sessionId);
+            question.setDelFlag(0);
+        }
+        if (StrUtil.isNotBlank(userName)) {
+            question.setUserName(userName);
+        }
+        if (agentId != null) {
+            question.setAgentId(agentId);
+        }
+        if (StrUtil.isNotBlank(resumeFileUrl)) {
+            question.setResumeFileUrl(resumeFileUrl);
+        }
+        question.setProfileJson(profileJson);
+        return saveInterviewQuestion(question);
+    }
+
+    @Override
     public InterviewQuestion createFromAIResponse(
             InterviewQuestionReqDTO reqDTO,
             String aiResponseData,

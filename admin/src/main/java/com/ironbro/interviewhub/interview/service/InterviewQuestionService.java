@@ -54,6 +54,12 @@ public interface InterviewQuestionService {
     Integer countByUserName(String userName);
 
     /**
+     * Persist the independently extracted candidate profile on the session record.
+     */
+    InterviewQuestion saveCandidateProfile(String sessionId, String userName, Long agentId,
+                                           String resumeFileUrl, String profileJson);
+
+    /**
      * 根据AI响应数据创建并保存面试题
      */
     InterviewQuestion createFromAIResponse(InterviewQuestionReqDTO reqDTO, String aiResponseData, 

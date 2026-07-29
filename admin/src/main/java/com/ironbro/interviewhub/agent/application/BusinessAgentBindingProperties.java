@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 public class BusinessAgentBindingProperties {
 
     private String generalAgentChat;
+    private String resumeProfileExtraction;
     private String interviewQuestionExtraction;
     private String interviewAnswerEvaluation;
     private String interviewDemeanor;
@@ -19,6 +20,7 @@ public class BusinessAgentBindingProperties {
         if (scene == null) return null;
         return switch (scene) {
             case GENERAL_AGENT_CHAT -> generalAgentChat;
+            case RESUME_PROFILE_EXTRACTION -> resumeProfileExtraction;
             case INTERVIEW_QUESTION_EXTRACTION -> interviewQuestionExtraction;
             case INTERVIEW_ANSWER_EVALUATION -> interviewAnswerEvaluation;
             case INTERVIEW_DEMEANOR -> interviewDemeanor;
