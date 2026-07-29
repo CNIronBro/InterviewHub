@@ -119,7 +119,8 @@ public class InterviewSessionFacade {
             String sessionId,
             MultipartFile resumePdf,
             Long userId,
-            String username) {
+            String username,
+            String confirmedTarget) {
         // 1) 先标记”上传中”，防止并发请求误判会话状态
         interviewSessionService.markResumeUploading(sessionId, userId);
 
@@ -128,6 +129,7 @@ public class InterviewSessionFacade {
         reqDTO.setUserName(username);
         reqDTO.setSessionId(sessionId);
         reqDTO.setResumePdf(resumePdf);
+        reqDTO.setConfirmedTarget(confirmedTarget);
 
         InterviewQuestionRespDTO response = interviewWorkflowService.extractInterviewQuestions(reqDTO);
         if (response != null && Integer.valueOf(1).equals(response.getIsSuccess())) {

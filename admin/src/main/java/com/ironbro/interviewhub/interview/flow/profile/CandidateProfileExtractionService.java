@@ -10,6 +10,7 @@ import com.ironbro.interviewhub.interview.application.guard.core.InterviewAiGuar
 import com.ironbro.interviewhub.interview.service.CandidateProfileParser;
 import com.ironbro.interviewhub.interview.service.InterviewQuestionService;
 import com.ironbro.interviewhub.interview.service.model.CandidateProfile;
+import com.ironbro.interviewhub.interview.service.model.CandidateProfileExtractionResult;
 import com.ironbro.interviewhub.interview.shared.InterviewAiInvoker;
 import com.ironbro.interviewhub.interview.shared.InterviewResponseParser;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,13 @@ public class CandidateProfileExtractionService {
     private final InterviewQuestionService interviewQuestionService;
 
     public CandidateProfile extract(
+            String sessionId,
+            String userName,
+            String resumeFileUrl) throws Exception {
+        return extractDetailed(sessionId, userName, resumeFileUrl).getProfile();
+    }
+
+    public CandidateProfileExtractionResult extractDetailed(
             String sessionId,
             String userName,
             String resumeFileUrl) throws Exception {
@@ -61,9 +69,17 @@ public class CandidateProfileExtractionService {
         CandidateProfile profile = candidateProfileParser.parse(payload);
         interviewQuestionService.saveCandidateProfile(
                 sessionId, userName, agent.getId(), resumeFileUrl, JSON.toJSONString(profile));
+        CandidateProfileExtractionResult result = new CandidateProfileExtractionResult();
+        result.setProfile(profile);
+        result.setScore(interviewResponseParser.parseScoreFromResponse(payload, "score"));
+        result.setResumeSuggest(interviewResponseParser.asStringList(payload.get("resumeSuggest")));
+        result.setResumeQuestion(interviewResponseParser.asStringList(payload.get("resumeQuestion")));
+        result.setResumeType(interviewResponseParser.asString(payload.get("resumeType")));
+        result.setRagQuery(interviewResponseParser.asStringList(payload.get("ragQuery")));
+        result.setRawResponse(response);
         log.info("Candidate profile extraction completed, scene={}, flowId={}, sessionId={}, roleHypothesisCount={}",
                 BusinessAgentScene.RESUME_PROFILE_EXTRACTION.getCode(), agent.getApiFlowId(),
                 sessionId, profile.getRoleHypotheses().size());
-        return profile;
+        return result;
     }
 }

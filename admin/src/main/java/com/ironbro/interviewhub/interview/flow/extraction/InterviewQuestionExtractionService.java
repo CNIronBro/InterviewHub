@@ -2,6 +2,7 @@ package com.ironbro.interviewhub.interview.flow.extraction;
 
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.crypto.digest.DigestUtil;
+import com.alibaba.fastjson2.JSON;
 import com.ironbro.interviewhub.agent.application.BusinessAgentResolver;
 import com.ironbro.interviewhub.agent.application.BusinessAgentScene;
 import com.ironbro.interviewhub.agent.dao.entity.AgentPropertiesDO;
@@ -17,9 +18,11 @@ import com.ironbro.interviewhub.interview.service.InterviewQuestionService;
 import com.ironbro.interviewhub.interview.service.CandidateProfileResolver;
 import com.ironbro.interviewhub.interview.service.QuestionSpecParser;
 import com.ironbro.interviewhub.interview.service.model.CandidateProfile;
+import com.ironbro.interviewhub.interview.service.model.CandidateProfileExtractionResult;
 import com.ironbro.interviewhub.interview.service.model.CandidateProfileResolutionResult;
 import com.ironbro.interviewhub.interview.service.model.QuestionSpecParseResult;
 import com.ironbro.interviewhub.toolkit.xunfei.XingChenAIClient;
+import com.ironbro.interviewhub.interview.flow.profile.CandidateProfileExtractionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
@@ -58,6 +61,7 @@ public class InterviewQuestionExtractionService {
     private final InterviewResponseParser interviewResponseParser;
     private final QuestionSpecParser questionSpecParser;
     private final CandidateProfileResolver candidateProfileResolver;
+    private final CandidateProfileExtractionService candidateProfileExtractionService;
 
     /**
      * Resolve the final target without invoking the question workflow.
@@ -105,27 +109,53 @@ public class InterviewQuestionExtractionService {
                 return response;
             }
 
-            // ④ 调 AI 解析简历（SingleFlight key = stage|sessionId|fileUrl，同一简历不会重复解析）
-            String fullContent = interviewAiInvoker.callAiSyncWithFile(
-                    EXTRACTION_PROMPT,
+            // ④ Step A: independent profile call. Failure degrades to the deterministic default profile.
+            CandidateProfileExtractionResult profileExtraction =
+                    extractProfileWithFallback(reqDTO, fileUrl);
+            // ⑤ Step B: deterministic target resolution.
+            CandidateProfileResolutionResult profileResolution = resolveCandidateProfile(
+                    profileExtraction.getProfile(), reqDTO.getConfirmedTarget(), Collections.emptyMap());
+            String profileJson = buildProfileJson(profileResolution);
+            log.info("Candidate profile resolved, sessionId={}, finalTarget={}, reason={}, profileVersion={}",
+                    reqDTO.getSessionId(),
+                    profileResolution.getFinalTarget(),
+                    profileResolution.getReason(),
+                    profileResolution.getProfile().getProfileVersion());
+            interviewQuestionService.saveCandidateProfile(
+                    reqDTO.getSessionId(), reqDTO.getUserName(), agentProperties.getId(), fileUrl,
+                    JSON.toJSONString(profileResolution.getProfile()));
+            // ⑥ Step C: question workflow receives only the resolved profile, never the resume file.
+            Map<String, Object> questionParameters = new LinkedHashMap<>();
+            questionParameters.put("AGENT_USER_INPUT", EXTRACTION_PROMPT);
+            questionParameters.put("PROFILE_JSON", profileJson);
+            log.info("Starting question generation, scene={}, flowId={}, sessionId={}, profileHash={}",
+                    BusinessAgentScene.INTERVIEW_QUESTION_EXTRACTION.getCode(),
+                    agentProperties.getApiFlowId(),
+                    reqDTO.getSessionId(),
+                    digestForLog(profileJson));
+            String fullContent = interviewAiInvoker.callAiSyncWithParameters(
                     reqDTO.getSessionId(),
                     agentProperties,
-                    fileUrl,
+                    questionParameters,
                     InterviewAiGuardStage.INTERVIEW_EXTRACTION,
-                    interviewAiInvoker.buildSingleFlightKey(InterviewAiGuardStage.INTERVIEW_EXTRACTION, reqDTO.getSessionId(), resumeContentHash)
+                    interviewAiInvoker.buildSingleFlightKey(
+                            InterviewAiGuardStage.INTERVIEW_EXTRACTION,
+                            reqDTO.getSessionId(),
+                            null,
+                            StrUtil.blankToDefault(resumeContentHash, "") + "|" + profileJson)
             );
 
             long responseTime = System.currentTimeMillis() - startTime;
             reqDTO.setResumeFileUrl(fileUrl);
 
-            // ⑤ 先持久化原始响应到 DB，即使后续解析失败，原始数据还在
+            // ⑦ 先持久化出题原始响应，即使后续解析失败，原始数据还在
             persistRawResponse(reqDTO, fullContent, responseTime);
 
             response.setResumeFileUrl(fileUrl);
             response.setResponseTime((int) responseTime);
 
-            // ⑥⑦⑧ 结构化解析 + Redis 缓存 + DB 二次落库
-            if (!populateStructuredResponse(reqDTO, response, fullContent)) {
+            // ⑧ 结构化解析 + Redis 缓存 + DB 二次落库
+            if (!populateStructuredResponse(reqDTO, response, fullContent, profileExtraction, profileResolution)) {
                 return response;
             }
 
@@ -174,6 +204,36 @@ public class InterviewQuestionExtractionService {
         }
     }
 
+    private CandidateProfileExtractionResult extractProfileWithFallback(
+            InterviewQuestionReqDTO reqDTO,
+            String fileUrl) {
+        try {
+            return candidateProfileExtractionService.extractDetailed(
+                    reqDTO.getSessionId(), reqDTO.getUserName(), fileUrl);
+        } catch (Exception profileException) {
+            log.warn("Candidate profile extraction failed, using default profile, sessionId={}, reason={}",
+                    reqDTO.getSessionId(), profileException.getMessage(), profileException);
+            CandidateProfileExtractionResult fallback = new CandidateProfileExtractionResult();
+            fallback.setProfile(new CandidateProfile());
+            return fallback;
+        }
+    }
+
+    private String buildProfileJson(CandidateProfileResolutionResult resolution) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        CandidateProfile profile = resolution == null ? new CandidateProfile() : resolution.getProfile();
+        payload.put("skills", profile.getSkills());
+        payload.put("skillEvidence", profile.getSkillEvidence());
+        payload.put("roleHypotheses", profile.getRoleHypotheses());
+        payload.put("confirmedTarget", profile.getConfirmedTarget());
+        payload.put("profileVersion", profile.getProfileVersion());
+        payload.put("finalTarget", resolution == null
+                ? CandidateProfileResolver.DEFAULT_TARGET : resolution.getFinalTarget());
+        payload.put("resolutionReason", resolution == null
+                ? CandidateProfileResolver.REASON_DEFAULT_FALLBACK : resolution.getReason());
+        return JSON.toJSONString(payload);
+    }
+
     /** 上传简历 PDF 到讯星辰平台，返回文件 URL；文件为空则返回 null 并设置错误信息 */
     private String uploadResumeIfPresent(
             InterviewQuestionReqDTO reqDTO,
@@ -218,7 +278,9 @@ public class InterviewQuestionExtractionService {
     private boolean populateStructuredResponse(
             InterviewQuestionReqDTO reqDTO,
             InterviewQuestionRespDTO response,
-            String fullContent) {
+            String fullContent,
+            CandidateProfileExtractionResult profileExtraction,
+            CandidateProfileResolutionResult profileResolution) {
         try {
             log.info("Start parsing interview question response, sessionId={}, payloadLength={}, payloadHash={}",
                     reqDTO.getSessionId(),
@@ -257,6 +319,7 @@ public class InterviewQuestionExtractionService {
                 log.warn("Interview question response parse failed, responseMap is null");
                 return false;
             }
+            mergeProfileFields(responseMap, profileExtraction, profileResolution);
 
             log.info("Interview question response fields: {}", responseMap.keySet());
             Map<String, Object> resumeContext = buildResumeContext(responseMap);
@@ -344,6 +407,34 @@ public class InterviewQuestionExtractionService {
                     cacheException.getMessage()
             );
             return false;
+        }
+    }
+
+    private void mergeProfileFields(
+            Map<String, Object> responseMap,
+            CandidateProfileExtractionResult extraction,
+            CandidateProfileResolutionResult resolution) {
+        if (responseMap == null || extraction == null) {
+            return;
+        }
+        if (!responseMap.containsKey("sugest") && extraction.getResumeSuggest() != null) {
+            responseMap.put("sugest", extraction.getResumeSuggest());
+        }
+        if (!responseMap.containsKey("resumeScore") && extraction.getScore() != null) {
+            responseMap.put("resumeScore", extraction.getScore());
+        }
+        if (!responseMap.containsKey("type")) {
+            String type = resolution == null ? extraction.getResumeType() : resolution.getFinalTarget();
+            if (StrUtil.isNotBlank(type)) {
+                responseMap.put("type", type);
+            }
+        }
+        responseMap.putIfAbsent("resumeQuestion", extraction.getResumeQuestion());
+        responseMap.putIfAbsent("ragQuery", extraction.getRagQuery());
+        if (resolution != null && resolution.getProfile() != null) {
+            responseMap.put("candidateProfile", resolution.getProfile());
+            responseMap.put("profileFinalTarget", resolution.getFinalTarget());
+            responseMap.put("profileResolutionReason", resolution.getReason());
         }
     }
 
