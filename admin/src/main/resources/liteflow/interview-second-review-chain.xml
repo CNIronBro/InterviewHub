@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<flow>
+    <chain name="second_review_chain">
+        THEN(loadReviewContext,
+        completenessGuard,
+        boundaryScoreJudge,
+        anchorConflictJudge,
+        lowConfidenceJudge,
+        userRequestedReviewJudge,
+        reviewDecisionFinalize);
+    </chain>
+</flow>
