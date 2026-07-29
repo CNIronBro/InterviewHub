@@ -34,4 +34,9 @@ public class InterviewQuestionReqDTO {
      */
     private String resumeFileUrl;
 
+    /**
+     * Explicit interview target used by the Level 1 profile resolution flow.
+     */
+    private String confirmedTarget;
+
 }

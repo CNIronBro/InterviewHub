@@ -14,7 +14,10 @@ import com.ironbro.interviewhub.interview.shared.InterviewAiInvoker;
 import com.ironbro.interviewhub.interview.shared.InterviewResponseParser;
 import com.ironbro.interviewhub.interview.service.InterviewQuestionCacheService;
 import com.ironbro.interviewhub.interview.service.InterviewQuestionService;
+import com.ironbro.interviewhub.interview.service.CandidateProfileResolver;
 import com.ironbro.interviewhub.interview.service.QuestionSpecParser;
+import com.ironbro.interviewhub.interview.service.model.CandidateProfile;
+import com.ironbro.interviewhub.interview.service.model.CandidateProfileResolutionResult;
 import com.ironbro.interviewhub.interview.service.model.QuestionSpecParseResult;
 import com.ironbro.interviewhub.toolkit.xunfei.XingChenAIClient;
 import lombok.RequiredArgsConstructor;
@@ -54,6 +57,18 @@ public class InterviewQuestionExtractionService {
     // AI 响应解析器：从大模型返回的 JSON 中提取结构化字段
     private final InterviewResponseParser interviewResponseParser;
     private final QuestionSpecParser questionSpecParser;
+    private final CandidateProfileResolver candidateProfileResolver;
+
+    /**
+     * Resolve the final target without invoking the question workflow.
+     * Priority: explicit confirmation, highest valid hypothesis, legacy context, default.
+     */
+    public CandidateProfileResolutionResult resolveCandidateProfile(
+            CandidateProfile profile,
+            String confirmedTarget,
+            Map<String, Object> legacyResumeContext) {
+        return candidateProfileResolver.resolve(profile, confirmedTarget, legacyResumeContext);
+    }
 
     /**
      * 上传简历 → AI 解析 → 提取面试题 → 落库 + 缓存。
