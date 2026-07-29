@@ -51,6 +51,9 @@ public class InterviewAiGuardConfiguration {
         if (InterviewAiGuardStage.INTERVIEW_EVALUATION.equals(stage)) {
             return new StagePolicy(20000L, 30, 1, 100L);
         }
+        if (InterviewAiGuardStage.INTERVIEW_REVIEW.equals(stage)) {
+            return new StagePolicy(20000L, 30, 1, 100L);
+        }
         if (InterviewAiGuardStage.INTERVIEW_FOLLOWUP.equals(stage)) {
             return new StagePolicy(20000L, 20, 1, 100L);
         }
