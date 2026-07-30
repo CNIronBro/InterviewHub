@@ -31,6 +31,16 @@ public class InterviewTurnLog {
 
     private String ruleVersion;
 
+    private String reviewReasonCode;
+
+    private Boolean secondReviewed;
+
+    private Integer firstScore;
+
+    private Integer reviewedScore;
+
+    private String reviewFinalStrategy;
+
     private Integer totalScore;
 
     private String feedback;

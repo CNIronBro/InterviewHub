@@ -68,10 +68,34 @@ public class InterviewEvaluationService {
             String questionContent,
             String answerContent,
             AgentPropertiesDO scorerAgent) {
+        return evaluateAnswer(
+                sessionId, requestId, questionNumber, questionContent, answerContent,
+                scorerAgent, InterviewAiGuardStage.INTERVIEW_EVALUATION);
+    }
 
+    public Map<String, Object> evaluateAnswerForReview(
+            String sessionId,
+            String requestId,
+            String questionNumber,
+            String questionContent,
+            String answerContent,
+            AgentPropertiesDO scorerAgent) {
+        return evaluateAnswer(
+                sessionId, requestId, questionNumber, questionContent, answerContent,
+                scorerAgent, InterviewAiGuardStage.INTERVIEW_REVIEW);
+    }
+
+    private Map<String, Object> evaluateAnswer(
+            String sessionId,
+            String requestId,
+            String questionNumber,
+            String questionContent,
+            String answerContent,
+            AgentPropertiesDO scorerAgent,
+            String stage) {
         // 1) 先走评分工作流（带参数化上下文），拿标准结构化评分。
         Map<String, Object> evaluationResult = evaluateAnswerByScorerAgent(
-                sessionId, requestId, questionNumber, questionContent, answerContent, scorerAgent);
+                sessionId, requestId, questionNumber, questionContent, answerContent, scorerAgent, stage);
         // Fallback when scorer workflow parsing fails.
         if (evaluationResult == null || evaluationResult.isEmpty()) {
             // 2) 工作流解析失败时降级到 prompt 直评，保证主链路可继续。
@@ -90,7 +114,7 @@ public class InterviewEvaluationService {
             );
             try {
                 String singleFlightKey = interviewAiInvoker.buildSingleFlightKey(
-                        InterviewAiGuardStage.INTERVIEW_EVALUATION,
+                        stage,
                         sessionId,
                         questionNumber,
                         answerContent
@@ -99,7 +123,7 @@ public class InterviewEvaluationService {
                         evaluationPrompt,
                         sessionId,
                         scorerAgent,
-                        InterviewAiGuardStage.INTERVIEW_EVALUATION,
+                        stage,
                         singleFlightKey
                 );
                 evaluationResult = interviewResponseParser.parseEvaluationResult(aiResponse);
@@ -177,7 +201,8 @@ public class InterviewEvaluationService {
             String questionNumber,
             String questionContent,
             String answerContent,
-            AgentPropertiesDO scorerAgent) {
+            AgentPropertiesDO scorerAgent,
+            String stage) {
         try {
             String resumeContextText = buildResumeContextText(
                     interviewQuestionCacheService.getSessionResumeContext(sessionId));
@@ -198,9 +223,9 @@ public class InterviewEvaluationService {
                     sessionId + "_score",
                     scorerAgent,
                     parameters,
-                    InterviewAiGuardStage.INTERVIEW_EVALUATION,
+                    stage,
                     interviewAiInvoker.buildSingleFlightKey(
-                            InterviewAiGuardStage.INTERVIEW_EVALUATION,
+                            stage,
                             sessionId,
                             questionNumber,
                             answerContent

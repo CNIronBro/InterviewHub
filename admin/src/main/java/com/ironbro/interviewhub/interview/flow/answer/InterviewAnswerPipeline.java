@@ -18,6 +18,12 @@ import com.ironbro.interviewhub.interview.application.runtime.InterviewSessionRu
 import com.ironbro.interviewhub.interview.application.rule.InterviewFollowUpRuleContext;
 import com.ironbro.interviewhub.interview.application.rule.InterviewFollowUpRuleDecision;
 import com.ironbro.interviewhub.interview.application.rule.InterviewFollowUpRuleService;
+import com.ironbro.interviewhub.interview.application.rule.review.InterviewSecondReviewAction;
+import com.ironbro.interviewhub.interview.application.rule.review.InterviewSecondReviewContext;
+import com.ironbro.interviewhub.interview.application.rule.review.InterviewSecondReviewDecision;
+import com.ironbro.interviewhub.interview.application.rule.review.InterviewSecondReviewMergeResult;
+import com.ironbro.interviewhub.interview.application.rule.review.InterviewSecondReviewMergeService;
+import com.ironbro.interviewhub.interview.application.rule.review.InterviewSecondReviewRuleService;
 import com.ironbro.interviewhub.interview.service.InterviewQuestionCacheService;
 import com.ironbro.interviewhub.interview.service.model.InterviewFlowState;
 import com.ironbro.interviewhub.interview.service.model.InterviewRuntimeLoadMode;
@@ -55,6 +61,8 @@ public class InterviewAnswerPipeline {
     private final InterviewAnswerIdempotencyService interviewAnswerIdempotencyService; // 两阶段幂等控制
     private final InterviewQuestionLockService interviewQuestionLockService; // 题号级分布式锁
     private final InterviewFollowUpRuleService interviewFollowUpRuleService; // 追问规则引擎（二次决策）
+    private final InterviewSecondReviewRuleService interviewSecondReviewRuleService;
+    private final InterviewSecondReviewMergeService interviewSecondReviewMergeService;
     private final InterviewTurnRepairService interviewTurnRepairService;    // 轮次写入失败的修复队列
     private final InterviewSessionRuntimeSnapshotService runtimeSnapshotService; // MongoDB 热快照刷新
     private final InterviewSessionRuntimeRehydrateService runtimeRehydrateService; // 缓存恢复（Redis 丢失时从 MongoDB 回补）
@@ -90,6 +98,9 @@ public class InterviewAnswerPipeline {
             }
             // 7) 调评分链路并提取结构化评分结果（此时仅计算，不入账）。
             if (!stepEvaluateAndScore(ctx)) {
+                return ctx.response;
+            }
+            if (!stepSecondReview(ctx)) {
                 return ctx.response;
             }
             // 8) 推进 flow、提交分数并组装下一题/结束态响应。
@@ -376,6 +387,91 @@ public class InterviewAnswerPipeline {
      * ④ 主问题推进分支：advanceMainQuestion → 判断是否结束 → 提交分数 → 返回下一题或 finish
      * ⑤ 分数提交失败：回滚 flow 到快照状态，客户端重试仍能命中当前题
      */
+    private boolean stepSecondReview(InterviewAnswerPipelineContext ctx) {
+        ctx.firstScore = ctx.score;
+        InterviewSecondReviewContext reviewContext = new InterviewSecondReviewContext();
+        reviewContext.setFirstScore(ctx.ruleScore);
+        reviewContext.setAnchorJudgments(ctx.anchorJudgments);
+        reviewContext.setConfidence(resolveReviewConfidence(ctx.anchorJudgments));
+        reviewContext.setRubricVersion(0);
+        reviewContext.setUserRequestedReview(false);
+
+        InterviewSecondReviewDecision decision = interviewSecondReviewRuleService.decide(reviewContext);
+        ctx.reviewReasonCode = decision.getReasonCode();
+        ctx.reviewFinalStrategy = decision.getReviewAction().name();
+        if (decision.getReviewAction() == InterviewSecondReviewAction.DIRECT_ACCEPT) {
+            ctx.secondReviewed = false;
+            return true;
+        }
+        if (decision.getReviewAction() == InterviewSecondReviewAction.CONSERVATIVE_RESULT) {
+            applyReviewMerge(ctx, interviewSecondReviewMergeService.conservative(
+                    ctx.firstScore, ctx.ruleScore, ctx.anchorJudgments, ctx.ruleVersion,
+                    "CONSERVATIVE_" + decision.getReasonCode()));
+            ctx.secondReviewed = false;
+            return true;
+        }
+
+        ctx.secondReviewed = true;
+        try {
+            AgentPropertiesDO scorerAgent =
+                    businessAgentResolver.resolveRequired(BusinessAgentScene.INTERVIEW_ANSWER_EVALUATION);
+            Map<String, Object> reviewed = interviewEvaluationService.evaluateAnswerForReview(
+                    ctx.sessionId,
+                    ctx.requestId,
+                    ctx.currentQuestionNumber,
+                    ctx.currentQuestion,
+                    ctx.requestParam.getAnswerContent(),
+                    scorerAgent
+            );
+            if (reviewed == null) {
+                ctx.reviewFinalStrategy = "REVIEW_FAILED_USE_FIRST_RESULT";
+                return true;
+            }
+            ctx.reviewedScore = interviewResponseParser.parseScoreFromResponse(reviewed, "score");
+            applyReviewMerge(ctx, interviewSecondReviewMergeService.merge(
+                    ctx.firstScore, ctx.ruleScore, ctx.anchorJudgments, ctx.ruleVersion, reviewed));
+            return true;
+        } catch (Exception ex) {
+            log.warn(
+                    "Second review failed; first result remains authoritative, sessionId={}, requestId={}, questionNumber={}",
+                    ctx.sessionId, ctx.requestId, ctx.currentQuestionNumber, ex);
+            ctx.reviewFinalStrategy = "REVIEW_FAILED_USE_FIRST_RESULT";
+            return true;
+        }
+    }
+
+    private void applyReviewMerge(
+            InterviewAnswerPipelineContext ctx, InterviewSecondReviewMergeResult merged) {
+        if (merged == null) return;
+        if (merged.getFinalScore() != null) {
+            ctx.score = merged.getFinalScore();
+        }
+        ctx.ruleScore = merged.getRuleScore();
+        ctx.anchorJudgments = merged.getAnchorJudgments();
+        ctx.ruleVersion = merged.getRuleVersion();
+        ctx.reviewFinalStrategy = merged.getFinalStrategy();
+        ctx.response.setScore(merged.isHidePreciseScore() ? null : ctx.score);
+        if (merged.isNeedsReview()) {
+            String feedback = StrUtil.blankToDefault(ctx.response.getFeedback(), "");
+            String notice = merged.isHidePreciseScore()
+                    ? "评分证据不足，请补充作答后再评估。"
+                    : "复核结果存在关键差异，建议复习并人工确认。";
+            ctx.response.setFeedback(StrUtil.isBlank(feedback) ? notice : feedback + " " + notice);
+        }
+    }
+
+    private Double resolveReviewConfidence(List<Map<String, Object>> anchors) {
+        if (anchors == null || anchors.isEmpty()) return null;
+        Double minimum = null;
+        for (Map<String, Object> anchor : anchors) {
+            Object value = anchor == null ? null : anchor.get("confidence");
+            if (!(value instanceof Number number)) return null;
+            double confidence = number.doubleValue();
+            minimum = minimum == null ? confidence : Math.min(minimum, confidence);
+        }
+        return minimum;
+    }
+
     private boolean stepAdvanceFlowAndAssemble(InterviewAnswerPipelineContext ctx) {
         // ① 先拍快照：后续若计分提交失败，用于补偿回滚 flow，避免”题号推进成功但分数未入账”
         InterviewFlowState flowSnapshotBeforeAdvance = snapshotFlowState(interviewFlowStateMachine.current(ctx.sessionId));
@@ -560,6 +656,11 @@ public class InterviewAnswerPipeline {
                     .ruleScore(ctx.ruleScore)
                     .anchorJudgments(ctx.anchorJudgments)
                     .ruleVersion(ctx.ruleVersion)
+                    .reviewReasonCode(ctx.reviewReasonCode)
+                    .secondReviewed(ctx.secondReviewed)
+                    .firstScore(ctx.firstScore)
+                    .reviewedScore(ctx.reviewedScore)
+                    .reviewFinalStrategy(ctx.reviewFinalStrategy)
                     .totalScore(ctx.totalScore)
                     .feedback(ctx.response.getFeedback())
                     .followUpNeeded(ctx.followUpNeeded)
@@ -723,6 +824,11 @@ public class InterviewAnswerPipeline {
         private String followUpQuestion;
         private List<String> missingPoints;
         private InterviewFollowUpRuleDecision followUpRuleDecision;
+        private String reviewReasonCode;
+        private Boolean secondReviewed;
+        private Integer firstScore;
+        private Integer reviewedScore;
+        private String reviewFinalStrategy;
         private InterviewTurnLog turnLog;
         private boolean idempotencyStarted;
         private boolean idempotencyMarkedSucceeded;

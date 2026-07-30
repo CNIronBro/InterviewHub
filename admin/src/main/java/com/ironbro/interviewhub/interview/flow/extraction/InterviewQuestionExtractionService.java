@@ -27,9 +27,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Collections;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +40,9 @@ import java.util.Map;
 @RequiredArgsConstructor
 @Slf4j
 public class InterviewQuestionExtractionService {
+
+    @Value("${xunzhi-agent.interview.question-knowledge-enhancement-enabled:false}")
+    private boolean questionKnowledgeEnhancementEnabled;
 
     /** 提取面试题的 prompt，要求 AI 返回 JSON 格式（questions/sugest/type/resumeScore） */
     private static final String EXTRACTION_PROMPT =
@@ -128,6 +133,9 @@ public class InterviewQuestionExtractionService {
             Map<String, Object> questionParameters = new LinkedHashMap<>();
             questionParameters.put("AGENT_USER_INPUT", EXTRACTION_PROMPT);
             questionParameters.put("PROFILE_JSON", profileJson);
+            questionParameters.put("ENABLE_KNOWLEDGE_BASE",
+                    String.valueOf(questionKnowledgeEnhancementEnabled));
+            questionParameters.put("RAG_QUERY", buildQuestionRagQuery(profileResolution));
             log.info("Starting question generation, scene={}, flowId={}, sessionId={}, profileHash={}",
                     BusinessAgentScene.INTERVIEW_QUESTION_EXTRACTION.getCode(),
                     agentProperties.getApiFlowId(),
@@ -232,6 +240,23 @@ public class InterviewQuestionExtractionService {
         payload.put("resolutionReason", resolution == null
                 ? CandidateProfileResolver.REASON_DEFAULT_FALLBACK : resolution.getReason());
         return JSON.toJSONString(payload);
+    }
+
+    private String buildQuestionRagQuery(CandidateProfileResolutionResult resolution) {
+        if (resolution == null || resolution.getProfile() == null) {
+            return CandidateProfileResolver.DEFAULT_TARGET + " 企业面试真题";
+        }
+        List<String> terms = new ArrayList<>();
+        terms.add(StrUtil.blankToDefault(
+                resolution.getFinalTarget(), CandidateProfileResolver.DEFAULT_TARGET));
+        if (resolution.getProfile().getSkills() != null) {
+            resolution.getProfile().getSkills().stream()
+                    .filter(StrUtil::isNotBlank)
+                    .limit(8)
+                    .forEach(terms::add);
+        }
+        terms.add("企业面试真题");
+        return String.join(" ", terms);
     }
 
     /** 上传简历 PDF 到讯星辰平台，返回文件 URL；文件为空则返回 null 并设置错误信息 */
