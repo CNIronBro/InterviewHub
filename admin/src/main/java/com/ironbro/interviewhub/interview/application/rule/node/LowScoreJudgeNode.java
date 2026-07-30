@@ -14,8 +14,8 @@ public class LowScoreJudgeNode extends NodeComponent {
         Integer score = context.getScore();
         if (score != null && score < context.getLowScoreThreshold()) {
             context.markNeedFollowUp(
-                    "LOW_SCORE",
-                    "score below threshold: " + score + " < " + context.getLowScoreThreshold()
+                    "LOW_SCORE_CLARIFICATION",
+                    "低分主问题允许一次澄清: " + score + " < " + context.getLowScoreThreshold()
             );
         }
     }

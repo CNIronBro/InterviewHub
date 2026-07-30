@@ -33,8 +33,6 @@ public class InterviewEvaluationService {
     private static final String KEY_LOGIC_OK = "logic_ok";
     private static final String KEY_MISSING_POINTS = "missing_points";
     private static final String KEY_FEEDBACK = "feedback";
-    private static final String KEY_FOLLOW_UP_NEEDED = "follow_up_needed";
-    private static final String KEY_FOLLOW_UP_QUESTION = "follow_up_question";
     private static final String KEY_RULE_SCORE = "ruleScore";
     private static final String KEY_ANCHOR_JUDGMENTS = "anchorJudgments";
     private static final String KEY_CAPABILITY_LEVEL = "capabilityLevel";
@@ -110,10 +108,9 @@ public class InterviewEvaluationService {
                             "1. score must be an integer in [0,100].\n" +
                             "2. feedback must be concise and practical.\n" +
                             "3. missing_points must be an array of strings.\n" +
-                            "4. follow_up_needed must be true or false.\n" +
-                            "5. If follow_up_needed is true, follow_up_question must be a non-empty string; " +
-                            "if false, follow_up_question must be JSON null (never a placeholder such as 无 or an empty string).\n" +
-                            "Output schema: {\"score\":0,\"feedback\":\"\",\"follow_up_needed\":false,\"follow_up_question\":null,\"missing_points\":[\"...\"]}",
+                            "4. anchors must contain evidence-based judgments for the current question only.\n" +
+                            "5. Do not decide whether to ask a follow-up and do not generate another question.\n" +
+                            "Output schema: {\"score\":0,\"logic_ok\":false,\"feedback\":\"\",\"missing_points\":[\"...\"],\"anchors\":[]}",
                     questionContent, answerContent, questionRubric
             );
             try {
@@ -142,10 +139,9 @@ public class InterviewEvaluationService {
             return null;
         }
 
-        // 3) 最后统一字段归一化，补全 followUp/feedback 等默认值。
+        // 3) 最后统一字段归一化。追问决策由后端规则链独占，评分结果不携带追问指令。
         Map<String, Object> normalized = normalizeScorerResult(evaluationResult);
         applyRubricVersion(normalized, questionRubric);
-        inferFollowUpNeededIfMissing(normalized);
         ensureDefaultEvaluationFields(normalized);
         applyRuleAggregation(normalized);
         return normalized;
@@ -264,6 +260,10 @@ public class InterviewEvaluationService {
             return "";
         }
         Map<String, String> specs = interviewQuestionCacheService.getSessionQuestionSpecs(sessionId);
+        String exactSpec = specs == null ? null : specs.get(questionNumber.trim());
+        if (StrUtil.isNotBlank(exactSpec)) {
+            return exactSpec;
+        }
         String mainQuestionNumber = questionNumber.trim().replaceFirst("-F\\d+$", "");
         String spec = specs == null ? null : specs.get(mainQuestionNumber);
         if (StrUtil.isNotBlank(spec)) {
@@ -323,19 +323,6 @@ public class InterviewEvaluationService {
         );
     }
 
-    private void inferFollowUpNeededIfMissing(Map<String, Object> result) {
-        if (result == null || result.containsKey(KEY_FOLLOW_UP_NEEDED)) {
-            return;
-        }
-        boolean logicOk = interviewResponseParser.asBoolean(result.get(KEY_LOGIC_OK));
-        List<String> missingPoints = interviewResponseParser.asStringList(result.get(KEY_MISSING_POINTS));
-        String followUpQuestion = interviewResponseParser.asString(result.get(KEY_FOLLOW_UP_QUESTION));
-        boolean inferredFollowUp = !logicOk
-                || (missingPoints != null && !missingPoints.isEmpty())
-                || StrUtil.isNotBlank(followUpQuestion);
-        result.put(KEY_FOLLOW_UP_NEEDED, inferredFollowUp);
-    }
-
     private void ensureDefaultEvaluationFields(Map<String, Object> result) {
         if (result == null) {
             return;
@@ -345,9 +332,6 @@ public class InterviewEvaluationService {
         }
         if (!result.containsKey(KEY_FEEDBACK)) {
             result.put(KEY_FEEDBACK, "");
-        }
-        if (!result.containsKey(KEY_FOLLOW_UP_QUESTION)) {
-            result.put(KEY_FOLLOW_UP_QUESTION, "");
         }
     }
 
@@ -376,17 +360,6 @@ public class InterviewEvaluationService {
         String feedback = extractStringByKeys(normalized, KEY_FEEDBACK, "comment", "suggestion");
         if (feedback != null) {
             normalized.put(KEY_FEEDBACK, feedback);
-        }
-
-        Boolean followUpNeeded = extractBooleanByKeys(normalized, KEY_FOLLOW_UP_NEEDED, "followUpNeeded");
-        if (followUpNeeded != null) {
-            normalized.put(KEY_FOLLOW_UP_NEEDED, followUpNeeded);
-        }
-
-        String followUpQuestion = extractStringByKeys(
-                normalized, KEY_FOLLOW_UP_QUESTION, "followUpQuestion", "ask_to_user", "ask");
-        if (followUpQuestion != null) {
-            normalized.put(KEY_FOLLOW_UP_QUESTION, followUpQuestion);
         }
 
         return normalized;

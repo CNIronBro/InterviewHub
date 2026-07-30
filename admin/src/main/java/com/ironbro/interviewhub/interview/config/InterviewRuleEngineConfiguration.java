@@ -12,7 +12,8 @@ public class InterviewRuleEngineConfiguration {
     private Boolean enable = true;
     private String defaultChainId = "default_followup_chain";
     private Boolean failOpen = true;
-    private String ruleVersion = "v1.0.0";
-    private Integer defaultMaxFollowUp = 2;
+    private String ruleVersion = "v2.0.0";
+    private Integer defaultMaxFollowUp = 1;
     private Integer defaultLowScoreThreshold = 60;
+    private Integer defaultHighQualityThreshold = 85;
 }

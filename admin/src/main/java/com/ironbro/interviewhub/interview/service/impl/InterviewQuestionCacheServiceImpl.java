@@ -613,6 +613,22 @@ public class InterviewQuestionCacheServiceImpl implements InterviewQuestionCache
             }
         }
     }
+
+    @Override
+    public void cacheFollowUpQuestionSpec(String sessionId, String questionNumber, String questionSpecJson) {
+        if (StrUtil.isBlank(sessionId) || StrUtil.isBlank(questionNumber) || StrUtil.isBlank(questionSpecJson)) {
+            return;
+        }
+        try {
+            String cacheKey = INTERVIEW_QUESTION_SPECS_KEY + sessionId;
+            stringRedisTemplate.opsForHash().put(cacheKey, questionNumber.trim(), questionSpecJson);
+            stringRedisTemplate.expire(cacheKey, CACHE_EXPIRE_HOURS, TimeUnit.HOURS);
+            log.info("Cached follow-up question spec, sessionId: {}, questionNumber: {}", sessionId, questionNumber);
+        } catch (Exception e) {
+            log.error("Failed to cache follow-up question spec, sessionId: {}, questionNumber: {}",
+                    sessionId, questionNumber, e);
+        }
+    }
     
     /**
      * 从数据库加载面试建议到缓存。
@@ -814,7 +830,7 @@ public class InterviewQuestionCacheServiceImpl implements InterviewQuestionCache
         state.setCurrentQuestionNumber("1");
         state.setTotalQuestions(totalQuestions);
         state.setFollowUpCount(0);
-        state.setMaxFollowUp(2);
+        state.setMaxFollowUp(1);
         state.setVersion(1);
         saveFlowState(sessionId, state);
         updateInterviewFlowStatus(sessionId, FLOW_STATUS_ASKING);
@@ -837,7 +853,7 @@ public class InterviewQuestionCacheServiceImpl implements InterviewQuestionCache
             state.setCurrentQuestionNumber(asString(entries.get("currentQuestionNumber"), null));
             state.setTotalQuestions(asInt(entries.get("totalQuestions"), 0));
             state.setFollowUpCount(asInt(entries.get("followUpCount"), 0));
-            state.setMaxFollowUp(asInt(entries.get("maxFollowUp"), 2));
+            state.setMaxFollowUp(asInt(entries.get("maxFollowUp"), 1));
             state.setVersion(asInt(entries.get("version"), 1));
             return state;
         } catch (Exception e) {
@@ -1073,7 +1089,7 @@ public class InterviewQuestionCacheServiceImpl implements InterviewQuestionCache
         payload.put("currentQuestionNumber", asString(state.getCurrentQuestionNumber(), ""));
         payload.put("totalQuestions", String.valueOf(state.getTotalQuestions() == null ? 0 : state.getTotalQuestions()));
         payload.put("followUpCount", String.valueOf(state.getFollowUpCount() == null ? 0 : state.getFollowUpCount()));
-        payload.put("maxFollowUp", String.valueOf(state.getMaxFollowUp() == null ? 2 : state.getMaxFollowUp()));
+        payload.put("maxFollowUp", String.valueOf(state.getMaxFollowUp() == null ? 1 : state.getMaxFollowUp()));
         payload.put("version", String.valueOf(state.getVersion() == null ? 1 : state.getVersion()));
         return payload;
     }

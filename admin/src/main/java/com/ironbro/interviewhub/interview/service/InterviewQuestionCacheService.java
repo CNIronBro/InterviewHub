@@ -110,6 +110,11 @@ public interface InterviewQuestionCacheService {
     void cacheFollowUpQuestion(String sessionId, String questionNumber, String questionContent);
 
     /**
+     * Cache the independent rubric for one follow-up question.
+     */
+    void cacheFollowUpQuestionSpec(String sessionId, String questionNumber, String questionSpecJson);
+
+    /**
      * Get cached follow-up questions for a session.
      * @param sessionId session id
      * @return follow-up question map

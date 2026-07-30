@@ -3,6 +3,7 @@ package com.ironbro.interviewhub.interview.application.rule;
 import lombok.Data;
 
 import java.util.List;
+import java.util.Map;
 
 @Data
 public class InterviewFollowUpRuleContext {
@@ -17,9 +18,12 @@ public class InterviewFollowUpRuleContext {
     private int resolvedMaxFollowUp;
     private Integer score;
     private int lowScoreThreshold;
-    private boolean followUpNeededFromAi;
+    private int highQualityThreshold;
     private List<String> missingPoints;
-    private String followUpQuestionHint;
+    private List<Map<String, Object>> anchorJudgments;
+    private String questionSpecJson;
+    private List<String> targetAnchorIds;
+    private List<String> targetMissingPoints;
     private boolean interviewCompleted;
     private String chainId;
     private String ruleVersion;
@@ -54,6 +58,8 @@ public class InterviewFollowUpRuleContext {
         decision.setChainId(chainId);
         decision.setRuleVersion(ruleVersion);
         decision.setFallback(fallback);
+        decision.setTargetAnchorIds(targetAnchorIds == null ? List.of() : List.copyOf(targetAnchorIds));
+        decision.setTargetMissingPoints(targetMissingPoints == null ? List.of() : List.copyOf(targetMissingPoints));
     }
 
     private void ensureDecision() {

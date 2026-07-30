@@ -9,13 +9,14 @@ import com.ironbro.interviewhub.interview.application.guard.core.InterviewAiGuar
 import com.ironbro.interviewhub.interview.application.guard.core.InterviewAiGuardStage;
 import com.ironbro.interviewhub.interview.shared.InterviewAiInvoker;
 import com.ironbro.interviewhub.interview.shared.InterviewResponseParser;
-import com.ironbro.interviewhub.interview.service.InterviewQuestionCacheService;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 
 @Service
@@ -28,13 +29,17 @@ public class InterviewFollowUpService {
     private static final String KEY_FOLLOW_UP_COUNT = "follow_up_count";
     private static final String KEY_MAX_FOLLOW_UP = "max_follow_up";
     private static final String KEY_QUESTION = "question";
-    private static final String KEY_RESUME_CONTEXT = "resume_context";
+    private static final String KEY_MAIN_QUESTION = "main_question";
+    private static final String KEY_MAIN_ANSWER = "main_answer";
+    private static final String KEY_CURRENT_QUESTION = "current_question";
+    private static final String KEY_CURRENT_ANSWER = "current_answer";
+    private static final String KEY_TARGET_ANCHOR_IDS = "target_anchor_ids";
+    private static final String KEY_TARGET_MISSING_POINTS = "target_missing_points";
     private static final String KEY_FOLLOW_UP_STRATEGY = "follow_up_strategy";
     private static final String KEY_ASK_TO_USER = "ask_to_user";
     private static final String KEY_END_INTERVIEW = "end_interview";
 
     private final BusinessAgentResolver businessAgentResolver;
-    private final InterviewQuestionCacheService interviewQuestionCacheService;
     private final InterviewAiInvoker interviewAiInvoker;
     private final InterviewResponseParser interviewResponseParser;
 
@@ -42,17 +47,20 @@ public class InterviewFollowUpService {
             String sessionId,
             String requestId,
             String currentQuestionNumber,
+            String mainQuestion,
+            String mainAnswer,
             String currentQuestion,
             String answerContent,
             String followUpStrategy,
-            String fallbackFollowUpQuestion,
+            String parentQuestionSpec,
+            List<String> targetAnchorIds,
+            List<String> targetMissingPoints,
             Integer currentFollowUpCount,
             Integer maxFollowUp) {
 
         // 1) 先做追问次数与输入兜底，超过上限直接停止追问。
         int safeCurrentFollowUpCount = Math.max(0, currentFollowUpCount == null ? 0 : currentFollowUpCount);
-        int safeMaxFollowUp = maxFollowUp == null || maxFollowUp <= 0 ? 2 : maxFollowUp;
-        String sanitizedFallbackQuestion = sanitizeFollowUpQuestion(fallbackFollowUpQuestion);
+        int safeMaxFollowUp = maxFollowUp == null || maxFollowUp <= 0 ? 1 : maxFollowUp;
         if (safeCurrentFollowUpCount >= safeMaxFollowUp) {
             return FollowUpQuestionResult.empty();
         }
@@ -70,32 +78,55 @@ public class InterviewFollowUpService {
             generatedQuestion = invokeFollowUpWorkflow(
                     sessionId,
                     requestId,
+                    mainQuestion,
+                    mainAnswer,
                     currentQuestion,
                     answerContent,
                     followUpStrategy,
+                    targetAnchorIds,
+                    targetMissingPoints,
                     safeCurrentFollowUpCount,
                     safeMaxFollowUp,
                     agentProperties
             );
         } catch (Exception ex) {
-            log.warn("Follow-up agent unavailable, fallback to scorer suggestion, sessionId={}", sessionId, ex);
+            log.warn("Follow-up agent unavailable, fallback to deterministic targeted question, sessionId={}", sessionId, ex);
         }
 
-        // 3) 工作流失败时回退到评分器建议问题，仍可继续流程。
-        String questionContent = StrUtil.isNotBlank(generatedQuestion) ? generatedQuestion : sanitizedFallbackQuestion;
+        // 3) 工作流失败时使用规则指令中的缺失点兜底，不再读取评分 Agent 的追问建议。
+        String questionContent = StrUtil.isNotBlank(generatedQuestion)
+                ? generatedQuestion
+                : buildDeterministicFallback(mainQuestion, targetMissingPoints);
         if (StrUtil.isBlank(questionContent)) {
             return FollowUpQuestionResult.empty();
         }
 
-        return new FollowUpQuestionResult(questionNumber, questionContent, safeCurrentFollowUpCount + 1);
+        String questionSpecJson = buildFollowUpQuestionSpec(
+                questionNumber,
+                mainQuestionNumber,
+                questionContent,
+                parentQuestionSpec,
+                targetAnchorIds,
+                targetMissingPoints
+        );
+        return new FollowUpQuestionResult(
+                questionNumber,
+                questionContent,
+                questionSpecJson,
+                safeCurrentFollowUpCount + 1
+        );
     }
 
     private String invokeFollowUpWorkflow(
             String sessionId,
             String requestId,
+            String mainQuestion,
+            String mainAnswer,
             String currentQuestion,
             String answerContent,
             String followUpStrategy,
+            List<String> targetAnchorIds,
+            List<String> targetMissingPoints,
             int currentFollowUpCount,
             int maxFollowUp,
             AgentPropertiesDO agentProperties) {
@@ -107,17 +138,20 @@ public class InterviewFollowUpService {
         try {
             Map<String, Object> parameters = buildWorkflowParameters(
                     answerContent,
+                    mainQuestion,
+                    mainAnswer,
                     currentQuestion,
                     followUpStrategy,
+                    targetAnchorIds,
+                    targetMissingPoints,
                     currentFollowUpCount,
-                    maxFollowUp,
-                    buildResumeContextText(interviewQuestionCacheService.getSessionResumeContext(sessionId))
+                    maxFollowUp
             );
             log.info(
                     "Follow-up workflow request, sessionId={}, requestId={}, question={}, followUpCount={}, maxFollowUp={}",
                     sessionId,
                     requestId,
-                    clip(currentQuestion, 120),
+                    clip(mainQuestion, 120),
                     currentFollowUpCount,
                     maxFollowUp
             );
@@ -125,8 +159,8 @@ public class InterviewFollowUpService {
             String singleFlightKey = interviewAiInvoker.buildSingleFlightKey(
                     InterviewAiGuardStage.INTERVIEW_FOLLOWUP,
                     sessionId,
-                    currentQuestion,
-                    answerContent
+                    mainQuestion,
+                    mainAnswer + "|" + answerContent + "|" + JSON.toJSONString(targetAnchorIds)
             );
             workflowResponse = interviewAiInvoker.callAiSyncWithParameters(
                     sessionId,
@@ -166,27 +200,112 @@ public class InterviewFollowUpService {
 
     private Map<String, Object> buildWorkflowParameters(
             String answerContent,
+            String mainQuestion,
+            String mainAnswer,
             String currentQuestion,
             String followUpStrategy,
+            List<String> targetAnchorIds,
+            List<String> targetMissingPoints,
             int currentFollowUpCount,
-            int maxFollowUp,
-            String resumeContextText) {
+            int maxFollowUp) {
         Map<String, Object> parameters = new LinkedHashMap<>();
         parameters.put(KEY_AGENT_USER_INPUT, answerContent);
         parameters.put(KEY_MODE, "FOLLOW_UP");
         parameters.put(KEY_FOLLOW_UP_COUNT, currentFollowUpCount);
         parameters.put(KEY_MAX_FOLLOW_UP, maxFollowUp);
-        parameters.put(KEY_QUESTION, currentQuestion);
-        parameters.put(KEY_FOLLOW_UP_STRATEGY, StrUtil.blankToDefault(followUpStrategy, ""));
-        parameters.put(KEY_RESUME_CONTEXT, resumeContextText);
+        // Keep legacy "question" bound to the root main question for workflows not yet re-imported.
+        parameters.put(KEY_QUESTION, mainQuestion);
+        parameters.put(KEY_MAIN_QUESTION, mainQuestion);
+        parameters.put(KEY_MAIN_ANSWER, mainAnswer);
+        parameters.put(KEY_CURRENT_QUESTION, currentQuestion);
+        parameters.put(KEY_CURRENT_ANSWER, answerContent);
+        parameters.put(KEY_TARGET_ANCHOR_IDS, targetAnchorIds == null ? List.of() : targetAnchorIds);
+        parameters.put(KEY_TARGET_MISSING_POINTS, targetMissingPoints == null ? List.of() : targetMissingPoints);
+        Map<String, Object> directive = new LinkedHashMap<>();
+        directive.put("strategy", StrUtil.blankToDefault(followUpStrategy, ""));
+        directive.put("targetAnchorIds", targetAnchorIds == null ? List.of() : targetAnchorIds);
+        directive.put("targetMissingPoints", targetMissingPoints == null ? List.of() : targetMissingPoints);
+        parameters.put(KEY_FOLLOW_UP_STRATEGY, JSON.toJSONString(directive));
         return parameters;
     }
 
-    private String buildResumeContextText(Map<String, Object> resumeContext) {
-        if (resumeContext == null || resumeContext.isEmpty()) {
-            return "";
+    private String buildDeterministicFallback(String mainQuestion, List<String> targetMissingPoints) {
+        String missingPoint = targetMissingPoints == null || targetMissingPoints.isEmpty()
+                ? "当前主问题中的关键实现或边界条件"
+                : targetMissingPoints.get(0);
+        return sanitizeFollowUpQuestion("结合你刚才对主问题的回答，请补充说明：" + clip(missingPoint, 50));
+    }
+
+    @SuppressWarnings("unchecked")
+    private String buildFollowUpQuestionSpec(
+            String questionNumber,
+            String parentQuestionNumber,
+            String questionContent,
+            String parentQuestionSpec,
+            List<String> targetAnchorIds,
+            List<String> targetMissingPoints) {
+        Map<String, Object> followUpSpec = new LinkedHashMap<>();
+        followUpSpec.put("questionId", questionNumber);
+        followUpSpec.put("parentQuestionId", parentQuestionNumber);
+        followUpSpec.put("isFollowUp", true);
+        followUpSpec.put("content", questionContent);
+        followUpSpec.put("targetAnchorIds", targetAnchorIds == null ? List.of() : targetAnchorIds);
+        followUpSpec.put("targetMissingPoints", targetMissingPoints == null ? List.of() : targetMissingPoints);
+        followUpSpec.put("rubricVersion", 1);
+
+        List<Map<String, Object>> selectedAnchors = new ArrayList<>();
+        try {
+            Map<String, Object> parentSpec = StrUtil.isBlank(parentQuestionSpec)
+                    ? null
+                    : JSON.parseObject(parentQuestionSpec, Map.class);
+            Object rawAnchors = parentSpec == null ? null : parentSpec.get("anchors");
+            if (rawAnchors instanceof List<?> anchors) {
+                for (Object rawAnchor : anchors) {
+                    if (!(rawAnchor instanceof Map<?, ?> anchor)) continue;
+                    String anchorId = stringValue(anchor.get("name"));
+                    if (StrUtil.isBlank(anchorId)) {
+                        anchorId = stringValue(anchor.get("anchorId"));
+                    }
+                    if (targetAnchorIds == null || targetAnchorIds.isEmpty() || targetAnchorIds.contains(anchorId)) {
+                        Map<String, Object> copied = new LinkedHashMap<>();
+                        anchor.forEach((key, value) -> copied.put(String.valueOf(key), value));
+                        copied.put("core", true);
+                        copied.put("weight", selectedAnchors.isEmpty() ? 100 : 0);
+                        selectedAnchors.add(copied);
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            log.debug("Failed to derive follow-up rubric from parent spec", ex);
         }
-        return clip(JSON.toJSONString(resumeContext), 2000);
+
+        if (selectedAnchors.isEmpty()) {
+            Map<String, Object> fallbackAnchor = new LinkedHashMap<>();
+            fallbackAnchor.put("name", "correctness");
+            fallbackAnchor.put("weight", 100);
+            fallbackAnchor.put("core", true);
+            fallbackAnchor.put("acceptableStatements",
+                    targetMissingPoints == null || targetMissingPoints.isEmpty()
+                            ? List.of("针对追问题面给出相关、正确且可验证的说明")
+                            : targetMissingPoints);
+            selectedAnchors.add(fallbackAnchor);
+        } else if (selectedAnchors.size() > 1) {
+            int baseWeight = 100 / selectedAnchors.size();
+            int assigned = 0;
+            for (int index = 0; index < selectedAnchors.size(); index++) {
+                int weight = index == selectedAnchors.size() - 1 ? 100 - assigned : baseWeight;
+                selectedAnchors.get(index).put("weight", weight);
+                assigned += weight;
+            }
+        }
+        followUpSpec.put("anchors", selectedAnchors);
+        followUpSpec.put("commonMistakes", List.of());
+        followUpSpec.put("followUpStrategy", "");
+        return JSON.toJSONString(followUpSpec);
+    }
+
+    private String stringValue(Object value) {
+        return value == null ? "" : String.valueOf(value).trim();
     }
 
     private String sanitizeFollowUpQuestion(String question) {
@@ -201,8 +320,8 @@ public class InterviewFollowUpService {
                 || "__FINISH__".equalsIgnoreCase(normalized)) {
             return null;
         }
-        if (!normalized.endsWith("?")) {
-            normalized = normalized + "?";
+        if (!normalized.endsWith("?") && !normalized.endsWith("？")) {
+            normalized = normalized + "？";
         }
         return clip(normalized, 100);
     }
@@ -237,16 +356,22 @@ public class InterviewFollowUpService {
     public static final class FollowUpQuestionResult {
         private final String questionNumber;
         private final String questionContent;
+        private final String questionSpecJson;
         private final Integer followUpCount;
 
-        private FollowUpQuestionResult(String questionNumber, String questionContent, Integer followUpCount) {
+        private FollowUpQuestionResult(
+                String questionNumber,
+                String questionContent,
+                String questionSpecJson,
+                Integer followUpCount) {
             this.questionNumber = questionNumber;
             this.questionContent = questionContent;
+            this.questionSpecJson = questionSpecJson;
             this.followUpCount = followUpCount;
         }
 
         public static FollowUpQuestionResult empty() {
-            return new FollowUpQuestionResult(null, null, 0);
+            return new FollowUpQuestionResult(null, null, null, 0);
         }
 
         public boolean hasQuestion() {

@@ -324,7 +324,8 @@ public class InterviewAnswerPipeline {
 
     /**
      * AI 评分：调大模型对用户答案评分，提取结构化结果。
-     * 返回字段：score（分数）、feedback（反馈）、follow_up_needed（是否需要追问）、follow_up_question（追问题目）、missing_points（遗漏知识点）
+     * 返回字段：score（兼容分）、feedback、missing_points、anchors。
+     * 是否追问完全由后端规则链决定，评分 Agent 不拥有追问决策权。
      * 注意：此时仅计算，不入账（分数提交在 stepAdvanceFlowAndAssemble 中）
      */
     private boolean stepEvaluateAndScore(InterviewAnswerPipelineContext ctx) {
@@ -365,8 +366,6 @@ public class InterviewAnswerPipeline {
             return false;
         }
 
-        ctx.followUpNeeded = interviewResponseParser.asBoolean(evaluationResult.get("follow_up_needed"));
-        ctx.followUpQuestion = sanitizeFollowUpQuestion(interviewResponseParser.asString(evaluationResult.get("follow_up_question")));
         ctx.missingPoints = interviewResponseParser.asStringList(evaluationResult.get("missing_points"));
         ctx.ruleScore = interviewResponseParser.parseScoreFromResponse(evaluationResult, "ruleScore");
         ctx.anchorJudgments = interviewResponseParser.parseAnchorResult(
@@ -382,7 +381,7 @@ public class InterviewAnswerPipeline {
     /**
      * 推进 flow + 组装响应。核心分支逻辑：
      * ① 拍 flow 快照（用于失败回滚）
-     * ② 追问规则引擎决策：AI 说要追问 + 规则引擎确认 + 未超过最大追问数 → 走追问分支
+     * ② 追问规则引擎根据锚点事实独立决策，评分 Agent 不参与是否追问
      * ③ 追问分支：生成追问题 → 缓存 → 推进 flow → 提交分数 → 返回追问题
      * ④ 主问题推进分支：advanceMainQuestion → 判断是否结束 → 提交分数 → 返回下一题或 finish
      * ⑤ 分数提交失败：回滚 flow 到快照状态，客户端重试仍能命中当前题
@@ -489,11 +488,11 @@ public class InterviewAnswerPipeline {
                 ? ruleDecision.getResolvedMaxFollowUp()
                 : ctx.maxFollowUp;
         boolean needFollowUp = ruleDecision != null
-                ? ruleDecision.isNeedFollowUp()
-                : Boolean.TRUE.equals(ctx.followUpNeeded);
+                && ruleDecision.isNeedFollowUp();
+        ctx.followUpNeeded = needFollowUp;
 
         log.info(
-                "Follow-up rule decision, sessionId={}, requestId={}, questionNumber={}, chainId={}, reasonCode={}, reasonText={}, ruleVersion={}, needFollowUp={}, resolvedMaxFollowUp={}, fallback={}",
+                "Follow-up rule decision, sessionId={}, requestId={}, questionNumber={}, chainId={}, reasonCode={}, reasonText={}, ruleVersion={}, needFollowUp={}, targetAnchorIds={}, targetMissingPoints={}, resolvedMaxFollowUp={}, fallback={}",
                 ctx.sessionId,
                 ctx.requestId,
                 ctx.currentQuestionNumber,
@@ -502,20 +501,30 @@ public class InterviewAnswerPipeline {
                 ruleDecision == null ? null : ruleDecision.getReasonText(),
                 ruleDecision == null ? null : ruleDecision.getRuleVersion(),
                 needFollowUp,
+                ruleDecision == null ? null : ruleDecision.getTargetAnchorIds(),
+                ruleDecision == null ? null : ruleDecision.getTargetMissingPoints(),
                 resolvedMaxFollowUp,
                 ruleDecision != null && ruleDecision.isFallback()
         );
 
         // 2) 按规则优先走追问分支；追问生成失败则自动回落到主问题推进分支。
         if (needFollowUp && ctx.currentFollowUpCount < resolvedMaxFollowUp) {
+            String mainQuestionNumber = resolveMainQuestionNumber(ctx.currentQuestionNumber);
+            String mainQuestion = getQuestionWithReload(ctx.sessionId, mainQuestionNumber);
+            String mainAnswer = resolveMainQuestionAnswer(ctx, mainQuestionNumber);
+            String parentQuestionSpec = resolveQuestionSpec(ctx.sessionId, mainQuestionNumber);
             InterviewFollowUpService.FollowUpQuestionResult followUpQuestionResult = interviewFollowUpService.generateFollowUpQuestion(
                     ctx.sessionId,
                     ctx.requestId,
                     ctx.currentQuestionNumber,
+                    mainQuestion,
+                    mainAnswer,
                     ctx.currentQuestion,
                     ctx.requestParam.getAnswerContent(),
                     resolveFollowUpStrategy(ctx.sessionId, ctx.currentQuestionNumber),
-                    ctx.followUpQuestion,
+                    parentQuestionSpec,
+                    ruleDecision.getTargetAnchorIds(),
+                    ruleDecision.getTargetMissingPoints(),
                     ctx.currentFollowUpCount,
                     resolvedMaxFollowUp
             );
@@ -524,6 +533,11 @@ public class InterviewAnswerPipeline {
                         ctx.sessionId,
                         followUpQuestionResult.getQuestionNumber(),
                         followUpQuestionResult.getQuestionContent()
+                );
+                interviewQuestionCacheService.cacheFollowUpQuestionSpec(
+                        ctx.sessionId,
+                        followUpQuestionResult.getQuestionNumber(),
+                        followUpQuestionResult.getQuestionSpecJson()
                 );
                 InterviewFlowState followUpFlow = interviewFlowStateMachine.startFollowUpQuestion(
                         ctx.sessionId,
@@ -654,9 +668,8 @@ public class InterviewAnswerPipeline {
     }
 
     /**
-     * 追问规则引擎：AI 返回 follow_up_needed 后，规则引擎二次决策。
-     * 综合考虑：面试方向、当前是否已是追问、已追问次数、最大追问数、分数、missing_points。
-     * 规则引擎可以覆盖 AI 的决策（比如分数太低直接跳过追问，进入下一题）。
+     * 追问规则引擎是唯一决策者。
+     * 它只消费评分事实（分数、锚点状态、缺失点）和流程状态，不读取模型追问建议。
      */
     private InterviewFollowUpRuleDecision decideFollowUp(InterviewAnswerPipelineContext ctx) {
         InterviewFollowUpRuleContext ruleContext = new InterviewFollowUpRuleContext();
@@ -666,11 +679,11 @@ public class InterviewAnswerPipeline {
         ruleContext.setInterviewType(interviewQuestionCacheService.getSessionInterviewDirection(ctx.sessionId));
         ruleContext.setFollowUpQuestion(Boolean.TRUE.equals(ctx.currentIsFollowUp));
         ruleContext.setFollowUpCount(ctx.currentFollowUpCount == null ? 0 : Math.max(ctx.currentFollowUpCount, 0));
-        ruleContext.setMaxFollowUp(ctx.maxFollowUp == null ? 2 : Math.max(ctx.maxFollowUp, 1));
+        ruleContext.setMaxFollowUp(ctx.maxFollowUp == null ? 1 : Math.max(ctx.maxFollowUp, 1));
         ruleContext.setScore(ctx.score);
-        ruleContext.setFollowUpNeededFromAi(Boolean.TRUE.equals(ctx.followUpNeeded));
         ruleContext.setMissingPoints(ctx.missingPoints);
-        ruleContext.setFollowUpQuestionHint(ctx.followUpQuestion);
+        ruleContext.setAnchorJudgments(ctx.anchorJudgments);
+        ruleContext.setQuestionSpecJson(resolveQuestionSpec(ctx.sessionId, ctx.currentQuestionNumber));
         ruleContext.setInterviewCompleted(Boolean.TRUE.equals(ctx.response.getFinished()));
         ctx.followUpRuleDecision = interviewFollowUpRuleService.decide(ruleContext);
         return ctx.followUpRuleDecision;
@@ -740,6 +753,47 @@ public class InterviewAnswerPipeline {
         return questionContent;
     }
 
+    private String resolveMainQuestionNumber(String questionNumber) {
+        if (StrUtil.isBlank(questionNumber)) {
+            return null;
+        }
+        return questionNumber.trim().replaceFirst("-F\\d+$", "");
+    }
+
+    /**
+     * The follow-up generator is always grounded in the root main question and its first answer.
+     */
+    private String resolveMainQuestionAnswer(InterviewAnswerPipelineContext ctx, String mainQuestionNumber) {
+        if (!Boolean.TRUE.equals(ctx.currentIsFollowUp)) {
+            return ctx.requestParam.getAnswerContent();
+        }
+        List<InterviewTurnLog> turns = interviewQuestionCacheService.getInterviewTurns(ctx.sessionId);
+        if (turns != null) {
+            for (int index = turns.size() - 1; index >= 0; index--) {
+                InterviewTurnLog turn = turns.get(index);
+                if (turn != null && Objects.equals(mainQuestionNumber, turn.getQuestionNumber())) {
+                    return turn.getAnswerContent();
+                }
+            }
+        }
+        return "";
+    }
+
+    private String resolveQuestionSpec(String sessionId, String questionNumber) {
+        if (StrUtil.isBlank(sessionId) || StrUtil.isBlank(questionNumber)) {
+            return "";
+        }
+        Map<String, String> specs = interviewQuestionCacheService.getSessionQuestionSpecs(sessionId);
+        if (specs == null || specs.isEmpty()) {
+            return "";
+        }
+        String exactSpec = specs.get(questionNumber.trim());
+        if (StrUtil.isNotBlank(exactSpec)) {
+            return exactSpec;
+        }
+        return StrUtil.blankToDefault(specs.get(resolveMainQuestionNumber(questionNumber)), "");
+    }
+
     /** 判断是否为追问题：追问题号格式为 "1-F1"、"1-F2"（主问题号-F追问序号） */
     private boolean isFollowUpQuestion(String questionNumber) {
         return StrUtil.isNotBlank(questionNumber) && questionNumber.trim().matches("\\d+-F\\d+");
@@ -761,7 +815,7 @@ public class InterviewAnswerPipeline {
 
     private int resolveMaxFollowUp(InterviewFlowState flowState) {
         if (flowState == null || flowState.getMaxFollowUp() == null || flowState.getMaxFollowUp() <= 0) {
-            return 2;
+            return 1;
         }
         return flowState.getMaxFollowUp();
     }
@@ -779,21 +833,6 @@ public class InterviewAnswerPipeline {
         } catch (Exception ex) {
             return 0;
         }
-    }
-
-    private String sanitizeFollowUpQuestion(String question) {
-        if (StrUtil.isBlank(question)) {
-            return null;
-        }
-        String normalized = question.trim();
-        if ("none".equalsIgnoreCase(normalized)
-                || "null".equalsIgnoreCase(normalized)
-                || "__FINISH__".equalsIgnoreCase(normalized)
-                || "N/A".equalsIgnoreCase(normalized)
-                || "-".equals(normalized)) {
-            return null;
-        }
-        return normalized;
     }
 
     private String truncateForLog(String value, int maxLength) {
@@ -854,7 +893,6 @@ public class InterviewAnswerPipeline {
         private String ruleVersion;
         private Integer totalScore;
         private Boolean followUpNeeded;
-        private String followUpQuestion;
         private List<String> missingPoints;
         private InterviewFollowUpRuleDecision followUpRuleDecision;
         private String reviewReasonCode;

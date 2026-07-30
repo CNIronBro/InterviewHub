@@ -2,6 +2,8 @@ package com.ironbro.interviewhub.interview.application.rule;
 
 import lombok.Data;
 
+import java.util.List;
+
 @Data
 public class InterviewFollowUpRuleDecision {
 
@@ -12,6 +14,8 @@ public class InterviewFollowUpRuleDecision {
     private String chainId;
     private String ruleVersion;
     private boolean fallback;
+    private List<String> targetAnchorIds;
+    private List<String> targetMissingPoints;
 
     public static InterviewFollowUpRuleDecision noFollowUp(
             int resolvedMaxFollowUp, String reasonCode, String reasonText,

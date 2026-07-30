@@ -1,7 +1,5 @@
 package com.ironbro.interviewhub.interview.application.rule.node;
 
-import cn.hutool.core.collection.CollUtil;
-import cn.hutool.core.util.StrUtil;
 import com.ironbro.interviewhub.interview.application.rule.InterviewFollowUpRuleContext;
 import com.yomahub.liteflow.annotation.LiteflowComponent;
 import com.yomahub.liteflow.core.NodeComponent;
@@ -13,11 +11,8 @@ public class MissingPointsJudgeNode extends NodeComponent {
     public void process() {
         InterviewFollowUpRuleContext context = getContextBean(InterviewFollowUpRuleContext.class);
         if (context.isTerminated()) return;
-        boolean hasMissingPoints = CollUtil.isNotEmpty(context.getMissingPoints());
-        boolean hasFollowUpHint = context.isFollowUpNeededFromAi()
-                && StrUtil.isNotBlank(context.getFollowUpQuestionHint());
-        if (hasMissingPoints || hasFollowUpHint) {
-            context.markNeedFollowUp("MISSING_POINTS", "存在缺失知识点或追问提示");
+        if (context.getTargetAnchorIds() != null && !context.getTargetAnchorIds().isEmpty()) {
+            context.markNeedFollowUp("CORE_ANCHOR_GAP", "存在尚未验证的核心评分锚点");
         }
     }
 }

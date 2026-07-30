@@ -27,22 +27,19 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.springframework.stereotype.Service;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Collections;
-import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class InterviewQuestionExtractionService {
-
-    @Value("${xunzhi-agent.interview.question-knowledge-enhancement-enabled:false}")
-    private boolean questionKnowledgeEnhancementEnabled;
 
     /** 提取面试题的 prompt，要求 AI 返回 JSON 格式（questions/sugest/type/resumeScore） */
     private static final String EXTRACTION_PROMPT =
@@ -67,6 +64,7 @@ public class InterviewQuestionExtractionService {
     private final QuestionSpecParser questionSpecParser;
     private final CandidateProfileResolver candidateProfileResolver;
     private final CandidateProfileExtractionService candidateProfileExtractionService;
+    private final InterviewQuestionKnowledgeProvider interviewQuestionKnowledgeProvider;
 
     /**
      * Resolve the final target without invoking the question workflow.
@@ -135,15 +133,17 @@ public class InterviewQuestionExtractionService {
             questionParameters.put("AGENT_USER_INPUT", EXTRACTION_PROMPT);
             questionParameters.put("PROFILE_JSON", JSON.parseObject(profileJson, Map.class));
             questionParameters.put("PROJECT_QUESTION_HINTS", profileExtraction.getResumeQuestion());
-            questionParameters.put("ENABLE_KNOWLEDGE_BASE",
-                    String.valueOf(questionKnowledgeEnhancementEnabled));
-            questionParameters.put("RAG_QUERY", buildQuestionRagQuery(profileResolution));
-            log.info("Starting question generation, scene={}, flowId={}, sessionId={}, profileHash={}, projectQuestionHintCount={}",
+            String ragQuery = buildQuestionRagQuery(profileExtraction, profileResolution);
+            String knowledgeContext = retrieveOptionalKnowledgeContext(reqDTO.getSessionId(), ragQuery);
+            questionParameters.put("KNOWLEDGE_CONTEXT", knowledgeContext);
+            log.info("Starting question generation, scene={}, flowId={}, sessionId={}, profileHash={}, projectQuestionHintCount={}, ragQueryHash={}, knowledgeContextLength={}",
                     BusinessAgentScene.INTERVIEW_QUESTION_EXTRACTION.getCode(),
                     agentProperties.getApiFlowId(),
                     reqDTO.getSessionId(),
                     digestForLog(profileJson),
-                    profileExtraction.getResumeQuestion().size());
+                    profileExtraction.getResumeQuestion().size(),
+                    digestForLog(ragQuery),
+                    knowledgeContext.length());
             String fullContent = interviewAiInvoker.callAiSyncWithParameters(
                     reqDTO.getSessionId(),
                     agentProperties,
@@ -154,10 +154,11 @@ public class InterviewQuestionExtractionService {
                             reqDTO.getSessionId(),
                             null,
                             StrUtil.blankToDefault(resumeContentHash, "")
-                                    + "|" + agentProperties.getApiFlowId()
-                                    + "|" + profileJson
-                                    + "|" + JSON.toJSONString(profileExtraction.getResumeQuestion()))
-            );
+                                     + "|" + agentProperties.getApiFlowId()
+                                     + "|" + profileJson
+                                     + "|" + JSON.toJSONString(profileExtraction.getResumeQuestion())
+                                     + "|" + knowledgeContext)
+             );
 
             long responseTime = System.currentTimeMillis() - startTime;
             reqDTO.setResumeFileUrl(fileUrl);
@@ -240,21 +241,48 @@ public class InterviewQuestionExtractionService {
         return JSON.toJSONString(payload);
     }
 
-    private String buildQuestionRagQuery(CandidateProfileResolutionResult resolution) {
-        if (resolution == null || resolution.getProfile() == null) {
-            return CandidateProfileResolver.DEFAULT_TARGET + " 企业面试真题";
-        }
-        List<String> terms = new ArrayList<>();
-        terms.add(StrUtil.blankToDefault(
-                resolution.getFinalTarget(), CandidateProfileResolver.DEFAULT_TARGET));
-        if (resolution.getProfile().getSkills() != null) {
-            resolution.getProfile().getSkills().stream()
+    private String buildQuestionRagQuery(
+            CandidateProfileExtractionResult extraction,
+            CandidateProfileResolutionResult resolution) {
+        Set<String> terms = new LinkedHashSet<>();
+        if (extraction != null && extraction.getRagQuery() != null) {
+            extraction.getRagQuery().stream()
                     .filter(StrUtil::isNotBlank)
-                    .limit(8)
+                    .map(String::trim)
+                    .limit(5)
                     .forEach(terms::add);
+        }
+        if (terms.isEmpty()) {
+            terms.add(resolution == null
+                    ? CandidateProfileResolver.DEFAULT_TARGET
+                    : StrUtil.blankToDefault(
+                            resolution.getFinalTarget(), CandidateProfileResolver.DEFAULT_TARGET));
+            if (resolution != null
+                    && resolution.getProfile() != null
+                    && resolution.getProfile().getSkills() != null) {
+                resolution.getProfile().getSkills().stream()
+                        .filter(StrUtil::isNotBlank)
+                        .map(String::trim)
+                        .limit(8)
+                        .forEach(terms::add);
+            }
         }
         terms.add("企业面试真题");
         return String.join(" ", terms);
+    }
+
+    private String retrieveOptionalKnowledgeContext(String sessionId, String ragQuery) {
+        try {
+            return StrUtil.trimToEmpty(
+                    interviewQuestionKnowledgeProvider.retrieve(sessionId, ragQuery));
+        } catch (Exception exception) {
+            log.warn(
+                    "Optional question knowledge retrieval failed, continue without enhancement, sessionId={}, ragQueryHash={}, error={}",
+                    sessionId,
+                    digestForLog(ragQuery),
+                    exception.getMessage());
+            return "";
+        }
     }
 
     /** 上传简历 PDF 到讯星辰平台，返回文件 URL；文件为空则返回 null 并设置错误信息 */

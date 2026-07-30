@@ -70,6 +70,7 @@ public class InterviewFollowUpRuleService {
         context.setRuleVersion(ruleConfiguration.getRuleVersion());
         context.setResolvedMaxFollowUp(resolveMaxFollowUp(context.getMaxFollowUp()));
         context.setLowScoreThreshold(resolveLowScoreThreshold());
+        context.setHighQualityThreshold(resolveHighQualityThreshold());
         context.setDecision(new InterviewFollowUpRuleDecision());
         context.setTerminated(false);
     }
@@ -80,13 +81,8 @@ public class InterviewFollowUpRuleService {
             String fallbackReasonText) {
         int resolvedMax = resolveMaxFollowUp(context.getMaxFollowUp());
         boolean underLimit = context.getFollowUpCount() < resolvedMax;
-        boolean needFollowUp = context.isFollowUpNeededFromAi() && underLimit;
-        String reasonCode = needFollowUp
-                ? "AI_SUGGESTED"
-                : (underLimit ? fallbackReasonCode : "FOLLOW_UP_LIMIT_REACHED");
-        String reasonText = needFollowUp
-                ? "follow_up_needed from ai result"
-                : (underLimit ? fallbackReasonText : "follow-up limit reached");
+        String reasonCode = underLimit ? fallbackReasonCode : "FOLLOW_UP_LIMIT_REACHED";
+        String reasonText = underLimit ? fallbackReasonText : "follow-up limit reached";
         InterviewFollowUpRuleDecision decision = InterviewFollowUpRuleDecision.noFollowUp(
                 resolvedMax,
                 reasonCode,
@@ -95,7 +91,6 @@ public class InterviewFollowUpRuleService {
                 ruleConfiguration.getRuleVersion(),
                 true
         );
-        decision.setNeedFollowUp(needFollowUp);
         return decision;
     }
 
@@ -114,11 +109,16 @@ public class InterviewFollowUpRuleService {
 
     private int resolveDefaultMaxFollowUp() {
         Integer configured = ruleConfiguration.getDefaultMaxFollowUp();
-        return configured != null && configured > 0 ? configured : 2;
+        return configured != null && configured > 0 ? configured : 1;
     }
 
     private int resolveLowScoreThreshold() {
         Integer defaultThreshold = ruleConfiguration.getDefaultLowScoreThreshold();
         return defaultThreshold != null && defaultThreshold >= 0 ? defaultThreshold : 60;
+    }
+
+    private int resolveHighQualityThreshold() {
+        Integer threshold = ruleConfiguration.getDefaultHighQualityThreshold();
+        return threshold != null && threshold >= 0 ? threshold : 85;
     }
 }
