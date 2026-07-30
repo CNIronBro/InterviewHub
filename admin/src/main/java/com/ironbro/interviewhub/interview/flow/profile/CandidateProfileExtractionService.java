@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Service
@@ -51,24 +52,25 @@ public class CandidateProfileExtractionService {
                 businessAgentResolver.resolveRequired(BusinessAgentScene.RESUME_PROFILE_EXTRACTION);
         log.info("Starting candidate profile extraction, scene={}, flowId={}, sessionId={}",
                 BusinessAgentScene.RESUME_PROFILE_EXTRACTION.getCode(), agent.getApiFlowId(), sessionId);
-        String response = interviewAiInvoker.callAiSyncWithFile(
-                PROFILE_PROMPT,
+        Map<String, Object> parameters = new LinkedHashMap<>();
+        parameters.put("AGENT_USER_INPUT", PROFILE_PROMPT);
+        parameters.put("USER_RESUME", resumeFileUrl);
+        String response = interviewAiInvoker.callAiSyncWithParameters(
                 sessionId,
                 agent,
-                resumeFileUrl,
+                parameters,
                 InterviewAiGuardStage.RESUME_PROFILE_EXTRACTION,
                 interviewAiInvoker.buildSingleFlightKey(
                         InterviewAiGuardStage.RESUME_PROFILE_EXTRACTION,
                         sessionId,
-                        DigestUtil.sha256Hex(resumeFileUrl))
+                        null,
+                        agent.getApiFlowId() + "|" + DigestUtil.sha256Hex(resumeFileUrl))
         );
         String content = interviewResponseParser.extractContentFromInterviewResponse(response);
         Map<String, Object> payload = interviewResponseParser.extractStructuredResult(
                 content, "skills", "skillEvidence", "roleHypotheses",
                 "score", "resumeSuggest", "resumeQuestion", "resumeType", "ragQuery");
         CandidateProfile profile = candidateProfileParser.parse(payload);
-        interviewQuestionService.saveCandidateProfile(
-                sessionId, userName, agent.getId(), resumeFileUrl, JSON.toJSONString(profile));
         CandidateProfileExtractionResult result = new CandidateProfileExtractionResult();
         result.setProfile(profile);
         result.setScore(interviewResponseParser.parseScoreFromResponse(payload, "score"));
@@ -77,9 +79,24 @@ public class CandidateProfileExtractionService {
         result.setResumeType(interviewResponseParser.asString(payload.get("resumeType")));
         result.setRagQuery(interviewResponseParser.asStringList(payload.get("ragQuery")));
         result.setRawResponse(response);
+        if (!hasUsableResumeEvidence(result)) {
+            throw new IllegalStateException(
+                    "resume profile workflow returned no usable profile or project questions");
+        }
+        interviewQuestionService.saveCandidateProfile(
+                sessionId, userName, agent.getId(), resumeFileUrl, JSON.toJSONString(profile));
         log.info("Candidate profile extraction completed, scene={}, flowId={}, sessionId={}, roleHypothesisCount={}",
                 BusinessAgentScene.RESUME_PROFILE_EXTRACTION.getCode(), agent.getApiFlowId(),
                 sessionId, profile.getRoleHypotheses().size());
         return result;
+    }
+
+    private boolean hasUsableResumeEvidence(CandidateProfileExtractionResult result) {
+        if (result == null || result.getProfile() == null) return false;
+        CandidateProfile profile = result.getProfile();
+        return !profile.getSkills().isEmpty()
+                || !profile.getSkillEvidence().isEmpty()
+                || !profile.getRoleHypotheses().isEmpty()
+                || !result.getResumeQuestion().isEmpty();
     }
 }

@@ -114,9 +114,10 @@ public class InterviewQuestionExtractionService {
                 return response;
             }
 
-            // ④ Step A: independent profile call. Failure degrades to the deterministic default profile.
+            // ④ Step A: independent profile call. Empty evidence must stop generation;
+            // silently substituting a generic profile fabricates irrelevant questions.
             CandidateProfileExtractionResult profileExtraction =
-                    extractProfileWithFallback(reqDTO, fileUrl);
+                    extractProfileRequired(reqDTO, fileUrl);
             // ⑤ Step B: deterministic target resolution.
             CandidateProfileResolutionResult profileResolution = resolveCandidateProfile(
                     profileExtraction.getProfile(), reqDTO.getConfirmedTarget(), Collections.emptyMap());
@@ -132,17 +133,17 @@ public class InterviewQuestionExtractionService {
             // ⑥ Step C: question workflow receives only the resolved profile, never the resume file.
             Map<String, Object> questionParameters = new LinkedHashMap<>();
             questionParameters.put("AGENT_USER_INPUT", EXTRACTION_PROMPT);
-            questionParameters.put("PROFILE_JSON", profileJson);
-            questionParameters.put("PROJECT_QUESTION_HINTS",
-                    JSON.toJSONString(profileExtraction.getResumeQuestion()));
+            questionParameters.put("PROFILE_JSON", JSON.parseObject(profileJson, Map.class));
+            questionParameters.put("PROJECT_QUESTION_HINTS", profileExtraction.getResumeQuestion());
             questionParameters.put("ENABLE_KNOWLEDGE_BASE",
                     String.valueOf(questionKnowledgeEnhancementEnabled));
             questionParameters.put("RAG_QUERY", buildQuestionRagQuery(profileResolution));
-            log.info("Starting question generation, scene={}, flowId={}, sessionId={}, profileHash={}",
+            log.info("Starting question generation, scene={}, flowId={}, sessionId={}, profileHash={}, projectQuestionHintCount={}",
                     BusinessAgentScene.INTERVIEW_QUESTION_EXTRACTION.getCode(),
                     agentProperties.getApiFlowId(),
                     reqDTO.getSessionId(),
-                    digestForLog(profileJson));
+                    digestForLog(profileJson),
+                    profileExtraction.getResumeQuestion().size());
             String fullContent = interviewAiInvoker.callAiSyncWithParameters(
                     reqDTO.getSessionId(),
                     agentProperties,
@@ -152,7 +153,10 @@ public class InterviewQuestionExtractionService {
                             InterviewAiGuardStage.INTERVIEW_EXTRACTION,
                             reqDTO.getSessionId(),
                             null,
-                            StrUtil.blankToDefault(resumeContentHash, "") + "|" + profileJson)
+                            StrUtil.blankToDefault(resumeContentHash, "")
+                                    + "|" + agentProperties.getApiFlowId()
+                                    + "|" + profileJson
+                                    + "|" + JSON.toJSONString(profileExtraction.getResumeQuestion()))
             );
 
             long responseTime = System.currentTimeMillis() - startTime;
@@ -214,19 +218,11 @@ public class InterviewQuestionExtractionService {
         }
     }
 
-    private CandidateProfileExtractionResult extractProfileWithFallback(
+    private CandidateProfileExtractionResult extractProfileRequired(
             InterviewQuestionReqDTO reqDTO,
-            String fileUrl) {
-        try {
-            return candidateProfileExtractionService.extractDetailed(
-                    reqDTO.getSessionId(), reqDTO.getUserName(), fileUrl);
-        } catch (Exception profileException) {
-            log.warn("Candidate profile extraction failed, using default profile, sessionId={}, reason={}",
-                    reqDTO.getSessionId(), profileException.getMessage(), profileException);
-            CandidateProfileExtractionResult fallback = new CandidateProfileExtractionResult();
-            fallback.setProfile(new CandidateProfile());
-            return fallback;
-        }
+            String fileUrl) throws Exception {
+        return candidateProfileExtractionService.extractDetailed(
+                reqDTO.getSessionId(), reqDTO.getUserName(), fileUrl);
     }
 
     private String buildProfileJson(CandidateProfileResolutionResult resolution) {
