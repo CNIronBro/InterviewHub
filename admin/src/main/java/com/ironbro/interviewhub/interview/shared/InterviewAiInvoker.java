@@ -33,6 +33,8 @@ public class InterviewAiInvoker {
     private final AiCallGuardService aiCallGuardService;
     // 分布式 single-flight 服务，把重复请求折叠成一次调用
     private final DistributedInterviewAiSingleFlightService distributedInterviewAiSingleFlightService;
+    // 按会话记录每次模型调用的请求与原始响应
+    private final InterviewAiTraceLogger interviewAiTraceLogger;
 
     /**
      * 最简调用：纯文本 prompt + 默认走"面试评分"阶段
@@ -55,7 +57,8 @@ public class InterviewAiInvoker {
             String stage,
             String singleFlightKey) throws Exception {
         // guardedCall = SingleFlight去重 → Guard限流熔断 → doChat真实调用
-        return guardedCall(stage, singleFlightKey, () -> doChat(prompt, sessionId, agentProperties, null, null));
+        return executeAndTrace(
+                prompt, sessionId, agentProperties, null, null, stage, singleFlightKey);
     }
 
     /**
@@ -78,7 +81,8 @@ public class InterviewAiInvoker {
             String fileUrl,
             String stage,
             String singleFlightKey) throws Exception {
-        return guardedCall(stage, singleFlightKey, () -> doChat(prompt, sessionId, agentProperties, fileUrl, null));
+        return executeAndTrace(
+                prompt, sessionId, agentProperties, fileUrl, null, stage, singleFlightKey);
     }
 
     /**
@@ -109,11 +113,40 @@ public class InterviewAiInvoker {
             String singleFlightKey) throws Exception {
         Object rawInput = parameters == null ? null : parameters.get("AGENT_USER_INPUT");
         String input = rawInput == null ? "" : rawInput.toString().trim();
-        return guardedCall(
+        return executeAndTrace(
+                StrUtil.blankToDefault(input, ""),
+                sessionId,
+                agentProperties,
+                null,
+                parameters,
                 stage,
-                singleFlightKey,
-                () -> doChat(StrUtil.blankToDefault(input, ""), sessionId, agentProperties, null, parameters)
-        );
+                singleFlightKey);
+    }
+
+    private String executeAndTrace(
+            String input,
+            String sessionId,
+            AgentPropertiesDO agentProperties,
+            String fileUrl,
+            Map<String, Object> parameters,
+            String stage,
+            String singleFlightKey) throws Exception {
+        long startedAt = System.currentTimeMillis();
+        try {
+            String response = guardedCall(
+                    stage,
+                    singleFlightKey,
+                    () -> doChat(input, sessionId, agentProperties, fileUrl, parameters));
+            interviewAiTraceLogger.record(
+                    sessionId, stage, agentProperties, input, fileUrl, parameters,
+                    response, System.currentTimeMillis() - startedAt, null);
+            return response;
+        } catch (Exception error) {
+            interviewAiTraceLogger.record(
+                    sessionId, stage, agentProperties, input, fileUrl, parameters,
+                    null, System.currentTimeMillis() - startedAt, error);
+            throw error;
+        }
     }
 
     /**
