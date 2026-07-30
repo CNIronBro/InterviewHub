@@ -29,6 +29,7 @@ public class InterviewFollowUpService {
     private static final String KEY_MAX_FOLLOW_UP = "max_follow_up";
     private static final String KEY_QUESTION = "question";
     private static final String KEY_RESUME_CONTEXT = "resume_context";
+    private static final String KEY_FOLLOW_UP_STRATEGY = "follow_up_strategy";
     private static final String KEY_ASK_TO_USER = "ask_to_user";
     private static final String KEY_END_INTERVIEW = "end_interview";
 
@@ -43,6 +44,7 @@ public class InterviewFollowUpService {
             String currentQuestionNumber,
             String currentQuestion,
             String answerContent,
+            String followUpStrategy,
             String fallbackFollowUpQuestion,
             Integer currentFollowUpCount,
             Integer maxFollowUp) {
@@ -70,6 +72,7 @@ public class InterviewFollowUpService {
                     requestId,
                     currentQuestion,
                     answerContent,
+                    followUpStrategy,
                     safeCurrentFollowUpCount,
                     safeMaxFollowUp,
                     agentProperties
@@ -92,6 +95,7 @@ public class InterviewFollowUpService {
             String requestId,
             String currentQuestion,
             String answerContent,
+            String followUpStrategy,
             int currentFollowUpCount,
             int maxFollowUp,
             AgentPropertiesDO agentProperties) {
@@ -104,6 +108,7 @@ public class InterviewFollowUpService {
             Map<String, Object> parameters = buildWorkflowParameters(
                     answerContent,
                     currentQuestion,
+                    followUpStrategy,
                     currentFollowUpCount,
                     maxFollowUp,
                     buildResumeContextText(interviewQuestionCacheService.getSessionResumeContext(sessionId))
@@ -162,6 +167,7 @@ public class InterviewFollowUpService {
     private Map<String, Object> buildWorkflowParameters(
             String answerContent,
             String currentQuestion,
+            String followUpStrategy,
             int currentFollowUpCount,
             int maxFollowUp,
             String resumeContextText) {
@@ -171,6 +177,7 @@ public class InterviewFollowUpService {
         parameters.put(KEY_FOLLOW_UP_COUNT, currentFollowUpCount);
         parameters.put(KEY_MAX_FOLLOW_UP, maxFollowUp);
         parameters.put(KEY_QUESTION, currentQuestion);
+        parameters.put(KEY_FOLLOW_UP_STRATEGY, StrUtil.blankToDefault(followUpStrategy, ""));
         parameters.put(KEY_RESUME_CONTEXT, resumeContextText);
         return parameters;
     }

@@ -57,6 +57,12 @@ public class InterviewQuestion {
     private String questionAnchorsJson;
 
     /**
+     * Full QuestionSpec JSON keyed by question number. It contains the scoring
+     * anchors, common mistakes and a follow-up strategy hint.
+     */
+    private String questionSpecsJson;
+
+    /**
      * Application-managed rubric version. Version 0 denotes the legacy rubric.
      */
     private Integer rubricVersion;

@@ -214,6 +214,7 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
             String interviewType,
             Map<String, Object> resumeContext,
             Map<String, String> anchorsByQuestionNumber,
+            Map<String, String> specsByQuestionNumber,
             Integer rubricVersion) {
         if (StrUtil.isBlank(sessionId)) {
             return null;
@@ -235,7 +236,8 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
         }
         setQuestions(question, questions);
         setSuggestions(question, suggestions);
-        setQuestionRubricIfAbsent(question, anchorsByQuestionNumber, rubricVersion);
+        setQuestionRubricIfAbsent(
+                question, anchorsByQuestionNumber, specsByQuestionNumber, rubricVersion);
         if (resumeScore != null) {
             question.setResumeScore(resumeScore);
         }
@@ -253,6 +255,7 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
     private void setQuestionRubricIfAbsent(
             InterviewQuestion question,
             Map<String, String> anchorsByQuestionNumber,
+            Map<String, String> specsByQuestionNumber,
             Integer rubricVersion) {
         if (question == null
                 || question.getRubricVersion() != null
@@ -263,6 +266,9 @@ public class InterviewQuestionServiceImpl implements InterviewQuestionService {
             return;
         }
         question.setQuestionAnchorsJson(JSON.toJSONString(anchorsByQuestionNumber));
+        if (specsByQuestionNumber != null && !specsByQuestionNumber.isEmpty()) {
+            question.setQuestionSpecsJson(JSON.toJSONString(specsByQuestionNumber));
+        }
         question.setRubricVersion(rubricVersion);
     }
 

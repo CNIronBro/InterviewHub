@@ -28,6 +28,7 @@ public class InterviewEvaluationService {
     private static final String KEY_AGENT_USER_INPUT = "AGENT_USER_INPUT";
     private static final String KEY_QUESTION = "question";
     private static final String KEY_RESUME_CONTEXT = "resume_context";
+    private static final String KEY_QUESTION_RUBRIC = "question_rubric";
     private static final String KEY_SCORE = "score";
     private static final String KEY_LOGIC_OK = "logic_ok";
     private static final String KEY_MISSING_POINTS = "missing_points";
@@ -96,6 +97,7 @@ public class InterviewEvaluationService {
         // 1) 先走评分工作流（带参数化上下文），拿标准结构化评分。
         Map<String, Object> evaluationResult = evaluateAnswerByScorerAgent(
                 sessionId, requestId, questionNumber, questionContent, answerContent, scorerAgent, stage);
+        String questionRubric = resolveQuestionRubric(sessionId, questionNumber);
         // Fallback when scorer workflow parsing fails.
         if (evaluationResult == null || evaluationResult.isEmpty()) {
             // 2) 工作流解析失败时降级到 prompt 直评，保证主链路可继续。
@@ -103,14 +105,16 @@ public class InterviewEvaluationService {
                     "You are a technical interview evaluator. Score the candidate answer and return strict JSON only.\n" +
                             "Question: %s\n" +
                             "Answer: %s\n" +
+                            "Question rubric: %s\n" +
                             "Requirements:\n" +
                             "1. score must be an integer in [0,100].\n" +
                             "2. feedback must be concise and practical.\n" +
                             "3. missing_points must be an array of strings.\n" +
                             "4. follow_up_needed must be true or false.\n" +
-                            "5. If follow_up_needed is true, follow_up_question must be non-empty.\n" +
-                            "Output schema: {\"score\":0,\"feedback\":\"\",\"follow_up_needed\":true,\"follow_up_question\":\"\",\"missing_points\":[\"...\"]}",
-                    questionContent, answerContent
+                            "5. If follow_up_needed is true, follow_up_question must be a non-empty string; " +
+                            "if false, follow_up_question must be JSON null (never a placeholder such as 无 or an empty string).\n" +
+                            "Output schema: {\"score\":0,\"feedback\":\"\",\"follow_up_needed\":false,\"follow_up_question\":null,\"missing_points\":[\"...\"]}",
+                    questionContent, answerContent, questionRubric
             );
             try {
                 String singleFlightKey = interviewAiInvoker.buildSingleFlightKey(
@@ -140,6 +144,7 @@ public class InterviewEvaluationService {
 
         // 3) 最后统一字段归一化，补全 followUp/feedback 等默认值。
         Map<String, Object> normalized = normalizeScorerResult(evaluationResult);
+        applyRubricVersion(normalized, questionRubric);
         inferFollowUpNeededIfMissing(normalized);
         ensureDefaultEvaluationFields(normalized);
         applyRuleAggregation(normalized);
@@ -206,9 +211,10 @@ public class InterviewEvaluationService {
         try {
             String resumeContextText = buildResumeContextText(
                     interviewQuestionCacheService.getSessionResumeContext(sessionId));
+            String questionRubric = resolveQuestionRubric(sessionId, questionNumber);
 
             Map<String, Object> parameters = buildScorerWorkflowParameters(
-                    answerContent, questionContent, resumeContextText);
+                    answerContent, questionContent, resumeContextText, questionRubric);
 
             logWorkflowParameters(
                     "scorer",
@@ -243,12 +249,46 @@ public class InterviewEvaluationService {
     private Map<String, Object> buildScorerWorkflowParameters(
             String answerContent,
             String questionContent,
-            String resumeContextText) {
+            String resumeContextText,
+            String questionRubric) {
         Map<String, Object> parameters = new LinkedHashMap<>();
         parameters.put(KEY_AGENT_USER_INPUT, answerContent);
         parameters.put(KEY_QUESTION, questionContent);
         parameters.put(KEY_RESUME_CONTEXT, resumeContextText);
+        parameters.put(KEY_QUESTION_RUBRIC, questionRubric);
         return parameters;
+    }
+
+    private String resolveQuestionRubric(String sessionId, String questionNumber) {
+        if (StrUtil.isBlank(sessionId) || StrUtil.isBlank(questionNumber)) {
+            return "";
+        }
+        Map<String, String> specs = interviewQuestionCacheService.getSessionQuestionSpecs(sessionId);
+        String mainQuestionNumber = questionNumber.trim().replaceFirst("-F\\d+$", "");
+        String spec = specs == null ? null : specs.get(mainQuestionNumber);
+        if (StrUtil.isNotBlank(spec)) {
+            return spec;
+        }
+        Map<String, String> anchors = interviewQuestionCacheService.getSessionQuestionAnchors(sessionId);
+        String legacyAnchors = anchors == null ? null : anchors.get(mainQuestionNumber);
+        return StrUtil.isBlank(legacyAnchors)
+                ? ""
+                : "{\"anchors\":" + legacyAnchors + ",\"rubricVersion\":0}";
+    }
+
+    private void applyRubricVersion(Map<String, Object> result, String questionRubric) {
+        if (result == null || StrUtil.isBlank(questionRubric)) {
+            return;
+        }
+        try {
+            Map<String, Object> rubric = JSON.parseObject(questionRubric, Map.class);
+            Object version = rubric.get("rubricVersion");
+            if (version != null) {
+                result.put("rubricVersion", version);
+            }
+        } catch (Exception ex) {
+            log.debug("Question rubric version is unavailable", ex);
+        }
     }
 
     private void logWorkflowParameters(

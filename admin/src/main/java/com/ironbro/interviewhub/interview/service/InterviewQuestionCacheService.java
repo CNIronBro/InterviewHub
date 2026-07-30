@@ -61,6 +61,10 @@ public interface InterviewQuestionCacheService {
      * @return question number to anchors JSON, or an empty map when absent
      */
     Map<String, String> getSessionQuestionAnchors(String sessionId);
+
+    void cacheQuestionSpecs(String sessionId, Map<String, String> specsByQuestionNumber);
+
+    Map<String, String> getSessionQuestionSpecs(String sessionId);
     
     /**
      * 获取会话的面试建议

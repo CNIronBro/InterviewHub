@@ -14,7 +14,8 @@ public class MissingPointsJudgeNode extends NodeComponent {
         InterviewFollowUpRuleContext context = getContextBean(InterviewFollowUpRuleContext.class);
         if (context.isTerminated()) return;
         boolean hasMissingPoints = CollUtil.isNotEmpty(context.getMissingPoints());
-        boolean hasFollowUpHint = StrUtil.isNotBlank(context.getFollowUpQuestionHint());
+        boolean hasFollowUpHint = context.isFollowUpNeededFromAi()
+                && StrUtil.isNotBlank(context.getFollowUpQuestionHint());
         if (hasMissingPoints || hasFollowUpHint) {
             context.markNeedFollowUp("MISSING_POINTS", "存在缺失知识点或追问提示");
         }

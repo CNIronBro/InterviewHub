@@ -30,6 +30,7 @@ public class QuestionSpecParser {
 
         List<String> questions = new ArrayList<>();
         Map<String, String> anchorsByQuestionNumber = new LinkedHashMap<>();
+        Map<String, String> specsByQuestionNumber = new LinkedHashMap<>();
         Integer commonVersion = null;
 
         for (Object rawQuestion : rawQuestions) {
@@ -43,16 +44,45 @@ public class QuestionSpecParser {
             questions.add(normalized.getContent());
             anchorsByQuestionNumber.put(
                     questionNumber, JSON.toJSONString(normalized.getAnchors()));
+            specsByQuestionNumber.put(
+                    questionNumber, buildNormalizedSpec(question, normalized));
             commonVersion = mergeVersion(commonVersion, normalized.getRubricVersion());
         }
 
         return QuestionSpecParseResult.builder()
                 .questions(questions)
                 .anchorsByQuestionNumber(anchorsByQuestionNumber)
+                .specsByQuestionNumber(specsByQuestionNumber)
                 .rubricVersion(commonVersion == null
                         ? QuestionSpecAnchorNormalizer.LEGACY_RUBRIC_VERSION
                         : commonVersion)
                 .build();
+    }
+
+    private String buildNormalizedSpec(
+            Map<String, Object> rawQuestion,
+            QuestionAnchorNormalizationResult normalized) {
+        Map<String, Object> spec = new LinkedHashMap<>();
+        spec.put("content", normalized.getContent());
+        spec.put("anchors", normalized.getAnchors());
+        spec.put("commonMistakes", stringList(rawQuestion.get("commonMistakes")));
+        spec.put("followUpStrategy", stringValue(rawQuestion.get("followUpStrategy")));
+        spec.put("rubricVersion", normalized.getRubricVersion());
+        return JSON.toJSONString(spec);
+    }
+
+    private List<String> stringList(Object raw) {
+        if (!(raw instanceof List<?> values)) {
+            return List.of();
+        }
+        return values.stream()
+                .map(this::stringValue)
+                .filter(StrUtil::isNotBlank)
+                .toList();
+    }
+
+    private String stringValue(Object raw) {
+        return raw == null ? "" : String.valueOf(raw).trim();
     }
 
     private Map<String, Object> toQuestionObject(Object rawQuestion) {
@@ -87,6 +117,7 @@ public class QuestionSpecParser {
         return QuestionSpecParseResult.builder()
                 .questions(List.of())
                 .anchorsByQuestionNumber(Map.of())
+                .specsByQuestionNumber(Map.of())
                 .rubricVersion(QuestionSpecAnchorNormalizer.LEGACY_RUBRIC_VERSION)
                 .build();
     }

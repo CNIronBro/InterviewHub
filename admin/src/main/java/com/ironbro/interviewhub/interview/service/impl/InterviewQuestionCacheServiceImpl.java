@@ -46,6 +46,7 @@ public class InterviewQuestionCacheServiceImpl implements InterviewQuestionCache
     private static final String INTERVIEW_QUESTIONS_KEY = "interview:questions:session:";
 
     private static final String INTERVIEW_QUESTION_ANCHORS_KEY = "interview:question_anchors:session:";
+    private static final String INTERVIEW_QUESTION_SPECS_KEY = "interview:question_specs:session:";
     
     /**
      * 面试建议缓存键前缀。
@@ -284,6 +285,65 @@ public class InterviewQuestionCacheServiceImpl implements InterviewQuestionCache
         }
     }
 
+    @Override
+    public void cacheQuestionSpecs(String sessionId, Map<String, String> specsByQuestionNumber) {
+        cacheStringMap(
+                INTERVIEW_QUESTION_SPECS_KEY + sessionId,
+                specsByQuestionNumber,
+                "question specs",
+                sessionId);
+    }
+
+    @Override
+    public Map<String, String> getSessionQuestionSpecs(String sessionId) {
+        return getStringMap(
+                INTERVIEW_QUESTION_SPECS_KEY + sessionId,
+                "question specs",
+                sessionId);
+    }
+
+    private void cacheStringMap(
+            String cacheKey,
+            Map<String, String> values,
+            String label,
+            String sessionId) {
+        try {
+            stringRedisTemplate.delete(cacheKey);
+            if (values == null || values.isEmpty()) {
+                return;
+            }
+            Map<String, String> normalized = new LinkedHashMap<>();
+            values.forEach((key, value) -> {
+                if (StrUtil.isNotBlank(key) && StrUtil.isNotBlank(value)) {
+                    normalized.put(key.trim(), value);
+                }
+            });
+            if (!normalized.isEmpty()) {
+                stringRedisTemplate.opsForHash().putAll(cacheKey, normalized);
+                stringRedisTemplate.expire(cacheKey, CACHE_EXPIRE_HOURS, TimeUnit.HOURS);
+            }
+            log.info("Cached {}, sessionId: {}, count: {}", label, sessionId, normalized.size());
+        } catch (Exception e) {
+            log.error("Failed to cache {}, sessionId: {}", label, sessionId, e);
+        }
+    }
+
+    private Map<String, String> getStringMap(String cacheKey, String label, String sessionId) {
+        try {
+            Map<Object, Object> rawMap = stringRedisTemplate.opsForHash().entries(cacheKey);
+            Map<String, String> result = new LinkedHashMap<>();
+            rawMap.entrySet().stream()
+                    .sorted((left, right) -> compareQuestionNumbers(
+                            left.getKey().toString(), right.getKey().toString()))
+                    .forEach(entry -> result.put(
+                            entry.getKey().toString(), entry.getValue().toString()));
+            return result;
+        } catch (Exception e) {
+            log.error("Failed to get {}, sessionId: {}", label, sessionId, e);
+            return Collections.emptyMap();
+        }
+    }
+
     private int compareQuestionNumbers(String left, String right) {
         if (left.matches("\\d+") && right.matches("\\d+")) {
             return Integer.compare(Integer.parseInt(left), Integer.parseInt(right));
@@ -461,7 +521,10 @@ public class InterviewQuestionCacheServiceImpl implements InterviewQuestionCache
         try {
             String cacheKey = INTERVIEW_QUESTIONS_KEY + sessionId;
             String followUpCacheKey = INTERVIEW_FOLLOW_UP_QUESTIONS_KEY + sessionId;
-            stringRedisTemplate.delete(List.of(cacheKey, followUpCacheKey));
+            String anchorsCacheKey = INTERVIEW_QUESTION_ANCHORS_KEY + sessionId;
+            String specsCacheKey = INTERVIEW_QUESTION_SPECS_KEY + sessionId;
+            stringRedisTemplate.delete(List.of(
+                    cacheKey, followUpCacheKey, anchorsCacheKey, specsCacheKey));
             log.info("Cleared interview question cache, sessionId: {}", sessionId);
         } catch (Exception e) {
             log.error("Interview cache service message", sessionId, e.getMessage(), e);
@@ -490,6 +553,8 @@ public class InterviewQuestionCacheServiceImpl implements InterviewQuestionCache
                 log.warn("Interview question data not found, sessionId: {}", sessionId);
                 return;
             }
+
+            restoreQuestionRubricCaches(sessionId, question);
             
             // 优先使用 JSON 字段恢复题目（保留题号）。
             if (StrUtil.isNotBlank(question.getQuestionsJson())) {
@@ -522,6 +587,30 @@ public class InterviewQuestionCacheServiceImpl implements InterviewQuestionCache
             
         } catch (Exception e) {
             log.error("Interview cache service message", sessionId, e.getMessage(), e);
+        }
+    }
+
+    private void restoreQuestionRubricCaches(String sessionId, InterviewQuestion question) {
+        if (question == null) {
+            return;
+        }
+        if (StrUtil.isNotBlank(question.getQuestionAnchorsJson())) {
+            try {
+                cacheQuestionAnchors(sessionId, JSON.parseObject(
+                        question.getQuestionAnchorsJson(),
+                        new TypeReference<LinkedHashMap<String, String>>() {}));
+            } catch (Exception e) {
+                log.warn("Failed to restore question anchors, sessionId={}", sessionId, e);
+            }
+        }
+        if (StrUtil.isNotBlank(question.getQuestionSpecsJson())) {
+            try {
+                cacheQuestionSpecs(sessionId, JSON.parseObject(
+                        question.getQuestionSpecsJson(),
+                        new TypeReference<LinkedHashMap<String, String>>() {}));
+            } catch (Exception e) {
+                log.warn("Failed to restore question specs, sessionId={}", sessionId, e);
+            }
         }
     }
     

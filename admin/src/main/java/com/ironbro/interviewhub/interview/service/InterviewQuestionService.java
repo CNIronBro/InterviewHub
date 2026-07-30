@@ -79,5 +79,6 @@ public interface InterviewQuestionService {
             String interviewType,
             Map<String, Object> resumeContext,
             Map<String, String> anchorsByQuestionNumber,
+            Map<String, String> specsByQuestionNumber,
             Integer rubricVersion);
 }

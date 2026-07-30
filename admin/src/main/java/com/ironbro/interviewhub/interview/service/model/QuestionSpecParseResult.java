@@ -12,5 +12,6 @@ public class QuestionSpecParseResult {
 
     List<String> questions;
     Map<String, String> anchorsByQuestionNumber;
+    Map<String, String> specsByQuestionNumber;
     Integer rubricVersion;
 }

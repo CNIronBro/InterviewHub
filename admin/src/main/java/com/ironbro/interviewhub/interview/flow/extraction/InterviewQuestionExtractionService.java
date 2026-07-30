@@ -133,6 +133,8 @@ public class InterviewQuestionExtractionService {
             Map<String, Object> questionParameters = new LinkedHashMap<>();
             questionParameters.put("AGENT_USER_INPUT", EXTRACTION_PROMPT);
             questionParameters.put("PROFILE_JSON", profileJson);
+            questionParameters.put("PROJECT_QUESTION_HINTS",
+                    JSON.toJSONString(profileExtraction.getResumeQuestion()));
             questionParameters.put("ENABLE_KNOWLEDGE_BASE",
                     String.valueOf(questionKnowledgeEnhancementEnabled));
             questionParameters.put("RAG_QUERY", buildQuestionRagQuery(profileResolution));
@@ -368,6 +370,8 @@ public class InterviewQuestionExtractionService {
             interviewQuestionCacheService.cacheInterviewQuestions(reqDTO.getSessionId(), questions);
             interviewQuestionCacheService.cacheQuestionAnchors(
                     reqDTO.getSessionId(), questionSpecs.getAnchorsByQuestionNumber());
+            interviewQuestionCacheService.cacheQuestionSpecs(
+                    reqDTO.getSessionId(), questionSpecs.getSpecsByQuestionNumber());
             Map<String, String> questionMap =
                     interviewQuestionCacheService.getSessionInterviewQuestions(reqDTO.getSessionId());
             response.setQuestions(questionMap);
@@ -420,6 +424,7 @@ public class InterviewQuestionExtractionService {
                     interviewType,
                     resumeContext,
                     questionSpecs.getAnchorsByQuestionNumber(),
+                    questionSpecs.getSpecsByQuestionNumber(),
                     questionSpecs.getRubricVersion());
             interviewQuestionCacheService.resetSessionScore(reqDTO.getSessionId());
             log.info("Session score reset, sessionId={}", reqDTO.getSessionId());
@@ -521,6 +526,7 @@ public class InterviewQuestionExtractionService {
             String interviewType,
             Map<String, Object> resumeContext,
             Map<String, String> anchorsByQuestionNumber,
+            Map<String, String> specsByQuestionNumber,
             Integer rubricVersion) {
         try {
             interviewQuestionService.upsertStructuredExtraction(
@@ -534,6 +540,7 @@ public class InterviewQuestionExtractionService {
                     interviewType,
                     resumeContext,
                     anchorsByQuestionNumber,
+                    specsByQuestionNumber,
                     rubricVersion
             );
         } catch (Exception ex) {

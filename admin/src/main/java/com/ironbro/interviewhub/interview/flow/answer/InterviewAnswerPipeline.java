@@ -400,6 +400,7 @@ public class InterviewAnswerPipeline {
         ctx.reviewReasonCode = decision.getReasonCode();
         ctx.reviewFinalStrategy = decision.getReviewAction().name();
         if (decision.getReviewAction() == InterviewSecondReviewAction.DIRECT_ACCEPT) {
+            applyRuleScoreAsFinal(ctx);
             ctx.secondReviewed = false;
             return true;
         }
@@ -424,7 +425,8 @@ public class InterviewAnswerPipeline {
                     scorerAgent
             );
             if (reviewed == null) {
-                ctx.reviewFinalStrategy = "REVIEW_FAILED_USE_FIRST_RESULT";
+                applyRuleScoreAsFinal(ctx);
+                ctx.reviewFinalStrategy = "REVIEW_FAILED_USE_RULE_RESULT";
                 return true;
             }
             ctx.reviewedScore = interviewResponseParser.parseScoreFromResponse(reviewed, "score");
@@ -433,11 +435,18 @@ public class InterviewAnswerPipeline {
             return true;
         } catch (Exception ex) {
             log.warn(
-                    "Second review failed; first result remains authoritative, sessionId={}, requestId={}, questionNumber={}",
+                    "Second review failed; deterministic rule result remains authoritative, sessionId={}, requestId={}, questionNumber={}",
                     ctx.sessionId, ctx.requestId, ctx.currentQuestionNumber, ex);
-            ctx.reviewFinalStrategy = "REVIEW_FAILED_USE_FIRST_RESULT";
+            applyRuleScoreAsFinal(ctx);
+            ctx.reviewFinalStrategy = "REVIEW_FAILED_USE_RULE_RESULT";
             return true;
         }
+    }
+
+    private void applyRuleScoreAsFinal(InterviewAnswerPipelineContext ctx) {
+        if (ctx.ruleScore == null) return;
+        ctx.score = ctx.ruleScore;
+        ctx.response.setScore(ctx.score);
     }
 
     private void applyReviewMerge(
@@ -505,6 +514,7 @@ public class InterviewAnswerPipeline {
                     ctx.currentQuestionNumber,
                     ctx.currentQuestion,
                     ctx.requestParam.getAnswerContent(),
+                    resolveFollowUpStrategy(ctx.sessionId, ctx.currentQuestionNumber),
                     ctx.followUpQuestion,
                     ctx.currentFollowUpCount,
                     resolvedMaxFollowUp
@@ -561,6 +571,29 @@ public class InterviewAnswerPipeline {
         }
         ctx.response.withNextQuestion(nextQuestionNumber, nextQuestion, false, 0).success();
         return true;
+    }
+
+    private String resolveFollowUpStrategy(String sessionId, String questionNumber) {
+        if (StrUtil.isBlank(sessionId) || StrUtil.isBlank(questionNumber)) {
+            return "";
+        }
+        Map<String, String> specs = interviewQuestionCacheService.getSessionQuestionSpecs(sessionId);
+        if (specs == null || specs.isEmpty()) {
+            return "";
+        }
+        String mainQuestionNumber = questionNumber.trim().replaceFirst("-F\\d+$", "");
+        String specJson = specs.get(mainQuestionNumber);
+        if (StrUtil.isBlank(specJson)) {
+            return "";
+        }
+        try {
+            Map<String, Object> spec = JSON.parseObject(specJson, Map.class);
+            return interviewResponseParser.asString(spec.get("followUpStrategy"));
+        } catch (Exception ex) {
+            log.debug("Follow-up strategy is unavailable, sessionId={}, questionNumber={}",
+                    sessionId, questionNumber, ex);
+            return "";
+        }
     }
 
     /**
