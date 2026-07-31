@@ -23,7 +23,6 @@ public class CoreAnchorAnalysisNode extends NodeComponent {
         if (context.isTerminated()) return;
 
         Map<String, String> statusByAnchor = new LinkedHashMap<>();
-        Map<String, String> evidenceByAnchor = new LinkedHashMap<>();
         if (context.getAnchorJudgments() != null) {
             for (Map<String, Object> judgment : context.getAnchorJudgments()) {
                 if (judgment == null) continue;
@@ -33,12 +32,12 @@ public class CoreAnchorAnalysisNode extends NodeComponent {
                 }
                 if (StrUtil.isNotBlank(anchorId)) {
                     statusByAnchor.put(anchorId, stringValue(judgment.get("status")));
-                    evidenceByAnchor.put(anchorId, stringValue(judgment.get("evidence")));
                 }
             }
         }
 
         List<String> unresolvedCoreAnchors = new ArrayList<>();
+        List<String> groundedTargetPoints = new ArrayList<>();
         if (StrUtil.isNotBlank(context.getQuestionSpecJson())) {
             try {
                 Map<String, Object> spec = JSON.parseObject(context.getQuestionSpecJson(), Map.class);
@@ -54,6 +53,18 @@ public class CoreAnchorAnalysisNode extends NodeComponent {
                         String status = statusByAnchor.get(anchorId);
                         if (StrUtil.isNotBlank(anchorId) && !"met".equalsIgnoreCase(status)) {
                             unresolvedCoreAnchors.add(anchorId);
+                            Object rawStatements = anchor.get("acceptableStatements");
+                            if (rawStatements instanceof List<?> statements) {
+                                for (Object statement : statements) {
+                                    String groundedPoint = stringValue(statement);
+                                    if (StrUtil.isNotBlank(groundedPoint) && groundedTargetPoints.size() < 4) {
+                                        groundedTargetPoints.add(anchorId + ": " + groundedPoint);
+                                    }
+                                    if (groundedTargetPoints.size() >= 4) {
+                                        break;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -63,17 +74,13 @@ public class CoreAnchorAnalysisNode extends NodeComponent {
         }
 
         context.setTargetAnchorIds(unresolvedCoreAnchors);
-        List<String> targetedMissingPoints = new ArrayList<>();
-        for (String anchorId : unresolvedCoreAnchors) {
-            String evidence = evidenceByAnchor.get(anchorId);
-            if (StrUtil.isNotBlank(evidence) && !"无相关表述".equals(evidence)) {
-                targetedMissingPoints.add(anchorId + "：" + evidence);
-            }
-        }
-        if (targetedMissingPoints.isEmpty() && context.getMissingPoints() != null) {
-            targetedMissingPoints.addAll(context.getMissingPoints());
-        }
-        context.setTargetMissingPoints(targetedMissingPoints);
+        context.setTargetMissingPoints(groundedTargetPoints);
+        context.setSubstantiveCoreEvidence(
+                FollowUpEvidencePolicy.hasSubstantiveCoreEvidence(
+                        unresolvedCoreAnchors,
+                        context.getAnchorJudgments()
+                )
+        );
     }
 
     private String stringValue(Object value) {

@@ -43,8 +43,10 @@ final class InterviewEvaluationSemanticGuard {
         }
 
         Map<String, Object> normalized = new LinkedHashMap<>(source);
-        if (!containsInternalDiagnostic(normalized.get("missing_points"))
-                && !containsInternalDiagnostic(normalized.get("feedback"))) {
+        boolean invalidMissingPoints = containsInternalDiagnostic(normalized.get("missing_points"));
+        boolean invalidFeedback = containsInternalDiagnostic(normalized.get("feedback"))
+                || isMeaninglessFeedback(normalized.get("feedback"));
+        if (!invalidMissingPoints && !invalidFeedback) {
             return normalized;
         }
 
@@ -53,15 +55,15 @@ final class InterviewEvaluationSemanticGuard {
             knowledgePoints = List.of("题目要求的核心概念、处理流程和工程权衡");
         }
 
-        List<String> missingPoints = knowledgePoints.stream()
-                .map(point -> "未体现：" + point)
-                .toList();
-        normalized.put("missing_points", missingPoints);
-        normalized.put(
-                "feedback",
-                "回答没有体现本题要求的相关技术知识，建议重点补充："
-                        + String.join("；", knowledgePoints)
-        );
+        if (invalidMissingPoints) {
+            List<String> missingPoints = knowledgePoints.stream()
+                    .map(point -> "未体现：" + point)
+                    .toList();
+            normalized.put("missing_points", missingPoints);
+        }
+        if (invalidFeedback) {
+            normalized.put("feedback", buildMeaningfulFeedback(normalized, knowledgePoints));
+        }
         return normalized;
     }
 
@@ -73,6 +75,112 @@ final class InterviewEvaluationSemanticGuard {
         return INTERNAL_DIAGNOSTIC_MARKERS.stream()
                 .map(String::toLowerCase)
                 .anyMatch(normalized::contains);
+    }
+
+    private static boolean isMeaninglessFeedback(Object value) {
+        String normalized = stringValue(value).toLowerCase();
+        return StrUtil.isBlank(normalized)
+                || "无".equals(normalized)
+                || "暂无".equals(normalized)
+                || "无反馈".equals(normalized)
+                || "null".equals(normalized)
+                || "none".equals(normalized)
+                || "n/a".equals(normalized)
+                || "-".equals(normalized);
+    }
+
+    private static String buildMeaningfulFeedback(
+            Map<String, Object> evaluation,
+            List<String> knowledgePoints) {
+        List<Map<String, Object>> anchors = anchorList(evaluation.get("anchors"));
+        List<String> positiveEvidence = evidenceByStatus(anchors, "met", "partial");
+        List<String> contradictedEvidence = evidenceByStatus(anchors, "contradicted");
+        List<String> missingPoints = stringList(evaluation.get("missing_points"));
+
+        boolean allMet = !anchors.isEmpty()
+                && anchors.stream().allMatch(anchor -> "met".equalsIgnoreCase(stringValue(anchor.get("status"))));
+        if (allMet) {
+            List<String> strengths = positiveEvidence.isEmpty() ? knowledgePoints : positiveEvidence;
+            return clip(
+                    "回答已覆盖本题要求的核心知识，具体表现为："
+                            + String.join("；", strengths.stream().limit(3).toList()),
+                    300
+            );
+        }
+        if (!contradictedEvidence.isEmpty()) {
+            return clip(
+                    "回答中存在需要纠正的技术认识："
+                            + String.join("；", contradictedEvidence.stream().limit(2).toList())
+                            + "。建议对照本题核心要求重新梳理正确机制及适用边界。",
+                    300
+            );
+        }
+        if (!positiveEvidence.isEmpty()) {
+            List<String> gaps = missingPoints.isEmpty() ? knowledgePoints : missingPoints;
+            return clip(
+                    "回答已体现部分相关知识："
+                            + String.join("；", positiveEvidence.stream().limit(2).toList())
+                            + "。仍需补充："
+                            + String.join("；", gaps.stream().limit(3).toList()),
+                    300
+            );
+        }
+        List<String> gaps = missingPoints.isEmpty() ? knowledgePoints : missingPoints;
+        return clip(
+                "回答没有体现本题要求的相关技术知识，建议重点补充："
+                        + String.join("；", gaps.stream().limit(4).toList()),
+                300
+        );
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> anchorList(Object value) {
+        if (!(value instanceof List<?> rawAnchors)) {
+            return List.of();
+        }
+        List<Map<String, Object>> anchors = new ArrayList<>();
+        for (Object rawAnchor : rawAnchors) {
+            if (rawAnchor instanceof Map<?, ?> anchor) {
+                Map<String, Object> copied = new LinkedHashMap<>();
+                anchor.forEach((key, entryValue) -> copied.put(String.valueOf(key), entryValue));
+                anchors.add(copied);
+            }
+        }
+        return anchors;
+    }
+
+    private static List<String> evidenceByStatus(
+            List<Map<String, Object>> anchors,
+            String... acceptedStatuses) {
+        Set<String> statuses = Set.of(acceptedStatuses);
+        List<String> evidence = new ArrayList<>();
+        for (Map<String, Object> anchor : anchors) {
+            String status = stringValue(anchor.get("status")).toLowerCase();
+            String detail = stringValue(anchor.get("evidence"));
+            if (statuses.contains(status)
+                    && StrUtil.isNotBlank(detail)
+                    && !"无相关表述".equals(detail)) {
+                evidence.add(detail);
+            }
+        }
+        return evidence;
+    }
+
+    private static List<String> stringList(Object value) {
+        if (!(value instanceof List<?> values)) {
+            return List.of();
+        }
+        return values.stream()
+                .map(InterviewEvaluationSemanticGuard::stringValue)
+                .filter(StrUtil::isNotBlank)
+                .toList();
+    }
+
+    private static String clip(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength);
     }
 
     @SuppressWarnings("unchecked")
