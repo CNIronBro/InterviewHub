@@ -358,6 +358,11 @@ public class InterviewAnswerPipeline {
             ctx.response.fail("failed to parse evaluation result");
             return false;
         }
+        evaluationResult = InterviewEvaluationSemanticGuard.normalize(
+                evaluationResult,
+                ctx.requestParam.getAnswerContent(),
+                resolveQuestionSpec(ctx.sessionId, ctx.currentQuestionNumber)
+        );
 
         Integer score = interviewResponseParser.parseScoreFromResponse(evaluationResult, "score");
         if (score == null) {

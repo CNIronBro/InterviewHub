@@ -24,6 +24,7 @@ public class InterviewFollowUpRuleContext {
     private String questionSpecJson;
     private List<String> targetAnchorIds;
     private List<String> targetMissingPoints;
+    private boolean substantiveCoreEvidence;
     private boolean interviewCompleted;
     private String chainId;
     private String ruleVersion;

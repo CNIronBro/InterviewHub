@@ -93,10 +93,10 @@ public class InterviewFollowUpService {
             log.warn("Follow-up agent unavailable, fallback to deterministic targeted question, sessionId={}", sessionId, ex);
         }
 
-        // 3) 工作流失败时使用规则指令中的缺失点兜底，不再读取评分 Agent 的追问建议。
+        // 3) 工作流失败时只允许使用原题的追问策略兜底，不读取评分 Agent 的自由文本。
         String questionContent = StrUtil.isNotBlank(generatedQuestion)
                 ? generatedQuestion
-                : buildDeterministicFallback(mainQuestion, targetMissingPoints);
+                : buildDeterministicFallback(followUpStrategy);
         if (StrUtil.isBlank(questionContent)) {
             return FollowUpQuestionResult.empty();
         }
@@ -229,11 +229,25 @@ public class InterviewFollowUpService {
         return parameters;
     }
 
-    private String buildDeterministicFallback(String mainQuestion, List<String> targetMissingPoints) {
-        String missingPoint = targetMissingPoints == null || targetMissingPoints.isEmpty()
-                ? "当前主问题中的关键实现或边界条件"
-                : targetMissingPoints.get(0);
-        return sanitizeFollowUpQuestion("结合你刚才对主问题的回答，请补充说明：" + clip(missingPoint, 50));
+    private String buildDeterministicFallback(String followUpStrategy) {
+        if (StrUtil.isBlank(followUpStrategy)) {
+            return null;
+        }
+        String candidate = followUpStrategy.trim();
+        int explicitQuestionIndex = candidate.lastIndexOf("追问：");
+        if (explicitQuestionIndex >= 0) {
+            candidate = candidate.substring(explicitQuestionIndex + "追问：".length()).trim();
+        } else {
+            int followUpVerbIndex = candidate.lastIndexOf("追问");
+            if (followUpVerbIndex >= 0) {
+                candidate = candidate.substring(followUpVerbIndex + "追问".length()).trim();
+            }
+        }
+        candidate = candidate.replaceFirst("^[：:，,。；;\\s]+", "");
+        if (candidate.length() < 8) {
+            return null;
+        }
+        return sanitizeFollowUpQuestion(candidate);
     }
 
     @SuppressWarnings("unchecked")
@@ -320,10 +334,28 @@ public class InterviewFollowUpService {
                 || "__FINISH__".equalsIgnoreCase(normalized)) {
             return null;
         }
+        if (containsInternalProtocolText(normalized)) {
+            log.warn("Rejected follow-up question containing internal protocol text: {}", clip(normalized, 120));
+            return null;
+        }
         if (!normalized.endsWith("?") && !normalized.endsWith("？")) {
             normalized = normalized + "？";
         }
         return clip(normalized, 100);
+    }
+
+    private boolean containsInternalProtocolText(String question) {
+        String normalized = question == null ? "" : question.toLowerCase();
+        return normalized.contains("missing_points")
+                || normalized.contains("targetmissingpoints")
+                || normalized.contains("targetanchorids")
+                || normalized.contains("follow_up_strategy")
+                || normalized.contains("未提供需要评分")
+                || normalized.contains("未提供题目和答案")
+                || normalized.contains("请提供技术面试题目")
+                || normalized.contains("无法完成评分")
+                || normalized.contains("无法评分")
+                || normalized.contains("评分所需的核心内容");
     }
 
     private String resolveMainQuestionNumber(String questionNumber) {

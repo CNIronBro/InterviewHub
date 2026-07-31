@@ -4,8 +4,10 @@
         THEN(loadFollowUpContext,
         completedStateGuard,
         followUpLimitGuard,
-        aiSuggestionJudge,
-        lowScoreJudge,
+        currentFollowUpGuard,
+        coreAnchorAnalysis,
+        substantiveEvidenceGuard,
+        highQualityAnswerGuard,
         missingPointsJudge,
         followUpDecisionFinalize);
     </chain>
